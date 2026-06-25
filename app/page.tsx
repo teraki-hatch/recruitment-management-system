@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import JobAds from "./JobAds";
 
 const COLORS = {
   ink: "#121212",
@@ -246,6 +247,9 @@ export default function Page() {
           </TabBtn>
           <TabBtn active={view === "list"} onClick={() => switchView("list")}>
             保存済み一覧
+          </TabBtn>
+          <TabBtn active={view === "jobad"} onClick={() => switchView("jobad")}>
+            求人票
           </TabBtn>
         </div>
 
@@ -648,6 +652,8 @@ export default function Page() {
             ))}
           </div>
         ) : null}
+
+        {view === "jobad" ? <JobAds /> : null}
       </div>
     </div>
   );
