@@ -264,7 +264,7 @@ export default function Page() {
                   <input
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
-                    placeholder="例：株式会社ユウキ建設様"
+                    placeholder="例：株式会社Hatch Promotion"
                     style={inputStyle}
                   />
                 </Field>
@@ -562,8 +562,10 @@ export default function Page() {
 
                           {personas.map((p) => {
                             const open = expandedId === p.id;
-                            const dateStr = p.created_at
-                              ? new Date(p.created_at).toLocaleDateString("ja-JP")
+                            const d = p.created_at ? new Date(p.created_at) : null;
+                            const pad = (n) => (n < 10 ? "0" + n : "" + n);
+                            const dateStr = d
+                              ? d.getFullYear() + "/" + pad(d.getMonth() + 1) + "/" + pad(d.getDate())
                               : "";
                             return (
                               <div
@@ -600,11 +602,11 @@ export default function Page() {
                                         現行
                                       </span>
                                     ) : null}
-                                    <span style={{ fontSize: 14, fontWeight: 700 }}>
-                                      {p.label || "（ラベルなし）"}
-                                    </span>
-                                    <span style={{ fontSize: 12, color: COLORS.greyblue }}>
+                                    <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.ink }}>
                                       {dateStr}
+                                    </span>
+                                    <span style={{ fontSize: 13, color: COLORS.inkSoft }}>
+                                      {p.label || "（ラベルなし）"}
                                     </span>
                                   </div>
                                   <div style={{ display: "flex", gap: 6 }}>
