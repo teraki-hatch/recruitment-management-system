@@ -446,7 +446,15 @@ export default function JobAds() {
             const d = ad.created_at ? new Date(ad.created_at) : null;
             const pad = (n) => (n < 10 ? "0" + n : "" + n);
             const dateStr = d
-              ? d.getFullYear() + "/" + pad(d.getMonth() + 1) + "/" + pad(d.getDate())
+              ? d.getFullYear() +
+                "/" +
+                pad(d.getMonth() + 1) +
+                "/" +
+                pad(d.getDate()) +
+                " " +
+                pad(d.getHours()) +
+                ":" +
+                pad(d.getMinutes())
               : "";
             const key = "saved-" + ad.id;
             return (
