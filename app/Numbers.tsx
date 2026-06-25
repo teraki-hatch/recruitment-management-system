@@ -62,6 +62,7 @@ export default function Numbers(props: any) {
   const [indeedId, setIndeedId] = useState("");
   const [status, setStatus] = useState("募集中");
   const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm] = useState(false);
 
   const [openPosting, setOpenPosting] = useState("");
 
@@ -170,11 +171,40 @@ export default function Numbers(props: any) {
 
   return (
     <div>
-      <div style={{ fontSize: 13, color: COLORS.inkSoft, marginBottom: 18 }}>
-        掲載求人を登録して、求人ごとに 媒体×週 で数値を入力します。
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 18,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ fontSize: 13, color: COLORS.inkSoft }}>
+          掲載求人を登録して、求人ごとに 媒体×週 で数値を入力します。
+        </div>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          style={{
+            background: showForm ? COLORS.paper : COLORS.ink,
+            color: showForm ? COLORS.ink : COLORS.paper,
+            border: "1px solid " + (showForm ? COLORS.line : COLORS.ink),
+            borderRadius: 10,
+            padding: "10px 18px",
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: FONT,
+            flexShrink: 0,
+          }}
+        >
+          {showForm ? "閉じる" : "＋ 掲載求人を登録"}
+        </button>
       </div>
 
       {/* 登録フォーム */}
+      {showForm ? (
       <div
         style={{
           background: COLORS.paper,
@@ -214,7 +244,7 @@ export default function Numbers(props: any) {
         </div>
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
-          <Field label="AirWork ID（個別No）" width={180}>
+          <Field label="AirWork ID（作成後に貼付・任意）" width={210}>
             <input
               value={airworkId}
               onChange={(e) => setAirworkId(e.target.value)}
@@ -263,6 +293,7 @@ export default function Numbers(props: any) {
           </button>
         </div>
       </div>
+      ) : null}
 
       {err ? (
         <div
