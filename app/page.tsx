@@ -18,6 +18,8 @@ const FONT =
 const EXPERIENCE = ["経験者", "未経験", "不問"];
 
 export default function Page() {
+  const [view, setView] = useState("generate");
+
   const [clientName, setClientName] = useState("");
   const [position, setPosition] = useState("");
   const [experience, setExperience] = useState("不問");
@@ -29,6 +31,14 @@ export default function Page() {
   const [copied, setCopied] = useState("");
   const [showJson, setShowJson] = useState(false);
 
+  const [saveState, setSaveState] = useState("idle");
+  const [saveMsg, setSaveMsg] = useState("");
+
+  const [listLoading, setListLoading] = useState(false);
+  const [listData, setListData] = useState([]);
+  const [listError, setListError] = useState("");
+  const [expandedId, setExpandedId] = useState("");
+
   const canGenerate = transcript.trim().length > 20 && !loading;
 
   async function generate() {
@@ -36,6 +46,8 @@ export default function Page() {
     setError("");
     setPersona(null);
     setRaw("");
+    setSaveState("idle");
+    setSaveMsg("");
     try {
       const res = await fetch("/api/persona", {
         method: "POST",
@@ -70,17 +82,94 @@ export default function Page() {
     }
   }
 
-  function asList(arr: any, indent?: string) {
+  async function savePersona() {
+    if (!persona) return;
+    if (!clientName.trim() || !position.trim()) {
+      setSaveState("error");
+      setSaveMsg("保存にはクライアント名とポジションが必要です。");
+      return;
+    }
+    setSaveState("saving");
+    setSaveMsg("");
+    try {
+      const res = await fetch("/api/personas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: clientName,
+          position: position,
+          experience: experience,
+          persona: persona,
+          transcript: transcript,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setSaveState("error");
+        setSaveMsg(data.error);
+        return;
+      }
+      setSaveState("saved");
+      setSaveMsg("保存しました。");
+    } catch (e) {
+      setSaveState("error");
+      setSaveMsg("保存に失敗しました。");
+    }
+  }
+
+  async function loadList() {
+    setListLoading(true);
+    setListError("");
+    try {
+      const res = await fetch("/api/personas", { method: "GET" });
+      const data = await res.json();
+      if (data.error) {
+        setListError(data.error);
+        setListData([]);
+        return;
+      }
+      setListData(data.clients || []);
+    } catch (e) {
+      setListError("一覧の取得に失敗しました。");
+    } finally {
+      setListLoading(false);
+    }
+  }
+
+  async function deletePersona(id) {
+    const ok = window.confirm("このペルソナを削除しますか？（元に戻せません）");
+    if (!ok) return;
+    try {
+      const res = await fetch("/api/personas?id=" + encodeURIComponent(id), {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.error) {
+        window.alert(data.error);
+        return;
+      }
+      loadList();
+    } catch (e) {
+      window.alert("削除に失敗しました。");
+    }
+  }
+
+  function switchView(v) {
+    setView(v);
+    if (v === "list") loadList();
+  }
+
+  function asList(arr, indent) {
     const pad = indent || "  ";
     if (!Array.isArray(arr) || arr.length === 0) return pad + "-";
-    return arr.map((x: any) => pad + "・" + x).join("\n");
+    return arr.map((x) => pad + "・" + x).join("\n");
   }
-  function flat(arr: any) {
+  function flat(arr) {
     if (!Array.isArray(arr) || arr.length === 0) return "-";
     return arr.join(" / ");
   }
 
-  function personaToText(p: any) {
+  function personaToText(p) {
     if (!p) return "";
     const lines = [];
     lines.push("■ クライアント: " + (clientName || "-"));
@@ -104,7 +193,7 @@ export default function Page() {
     return lines.join("\n");
   }
 
-  function copy(kind: string) {
+  function copy(kind) {
     let payload = "";
     if (kind === "json") {
       payload = JSON.stringify(
@@ -147,233 +236,414 @@ export default function Page() {
             PERSONA ENGINE
           </span>
         </div>
-        <h1 style={{ fontSize: 30, fontWeight: 800, margin: "10px 0 6px", lineHeight: 1.25 }}>
+        <h1 style={{ fontSize: 30, fontWeight: 800, margin: "10px 0 14px", lineHeight: 1.25 }}>
           ペルソナ生成エンジン
         </h1>
-        <p style={{ color: COLORS.inkSoft, margin: 0, fontSize: 14 }}>
-          tl;dv議事録を貼って、求人票生成にそのまま渡せるペルソナを一気通貫で。
-        </p>
 
-        <div
-          style={{
-            background: COLORS.paper,
-            border: "1px solid " + COLORS.line,
-            borderRadius: 14,
-            padding: 20,
-            marginTop: 24,
-          }}
-        >
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-            <Field label="クライアント名">
-              <input
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                placeholder="例：アクアテック"
-                style={inputStyle}
-              />
-            </Field>
-            <Field label="ポジション">
-              <input
-                value={position}
-                onChange={(e) => setPosition(e.target.value)}
-                placeholder="例：施工管理"
-                style={inputStyle}
-              />
-            </Field>
-            <Field label="雇用条件" grow={false}>
-              <div style={{ display: "flex", gap: 6 }}>
-                {EXPERIENCE.map((x) => (
-                  <button
-                    key={x}
-                    onClick={() => setExperience(x)}
-                    style={{
-                      ...chipStyle,
-                      background: experience === x ? COLORS.ink : COLORS.paper,
-                      color: experience === x ? COLORS.paper : COLORS.inkSoft,
-                      borderColor: experience === x ? COLORS.ink : COLORS.line,
-                    }}
-                  >
-                    {x}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          </div>
-
-          <div style={{ marginTop: 16 }}>
-            <label style={labelStyle}>tl;dv議事録</label>
-            <textarea
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-              placeholder="tl;dvの文字起こし／議事録をそのまま貼り付けてください。"
-              rows={10}
-              style={{
-                ...inputStyle,
-                width: "100%",
-                resize: "vertical",
-                lineHeight: 1.7,
-                fontFamily: FONT,
-                marginTop: 6,
-              }}
-            />
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 16 }}>
-            <button
-              onClick={generate}
-              disabled={!canGenerate}
-              style={{
-                background: canGenerate ? COLORS.ink : COLORS.greyblue,
-                color: COLORS.paper,
-                border: "none",
-                borderRadius: 10,
-                padding: "13px 26px",
-                fontSize: 15,
-                fontWeight: 700,
-                cursor: canGenerate ? "pointer" : "not-allowed",
-                fontFamily: FONT,
-              }}
-            >
-              {loading ? "生成中…" : "ペルソナを生成"}
-            </button>
-            {transcript.trim().length > 0 && transcript.trim().length <= 20 ? (
-              <span style={{ fontSize: 12, color: COLORS.greyblue }}>
-                議事録をもう少し貼ってください
-              </span>
-            ) : null}
-          </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+          <TabBtn active={view === "generate"} onClick={() => switchView("generate")}>
+            ペルソナ生成
+          </TabBtn>
+          <TabBtn active={view === "list"} onClick={() => switchView("list")}>
+            保存済み一覧
+          </TabBtn>
         </div>
 
-        {error ? (
-          <div
-            style={{
-              marginTop: 18,
-              padding: "14px 16px",
-              borderRadius: 10,
-              background: "#FBEDE9",
-              border: "1px solid #E9C9BF",
-              color: "#8A3A22",
-              fontSize: 14,
-            }}
-          >
-            {error}
-          </div>
-        ) : null}
-
-        {persona ? (
-          <div style={{ marginTop: 28 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 10,
-                marginBottom: 14,
-              }}
-            >
-              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>生成されたペルソナ</h2>
-              <div style={{ display: "flex", gap: 8 }}>
-                <SmallBtn onClick={() => copy("text")} active={copied === "text"}>
-                  {copied === "text" ? "コピーしました" : "テキストでコピー"}
-                </SmallBtn>
-                <SmallBtn onClick={() => copy("json")} active={copied === "json"}>
-                  {copied === "json" ? "コピーしました" : "JSONをコピー"}
-                </SmallBtn>
-              </div>
-            </div>
-
+        {view === "generate" ? (
+          <div>
             <div
               style={{
                 background: COLORS.paper,
                 border: "1px solid " + COLORS.line,
                 borderRadius: 14,
-                overflow: "hidden",
+                padding: 20,
               }}
             >
-              <div style={{ background: COLORS.ink, color: COLORS.paper, padding: "16px 22px" }}>
-                <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.sand }}>PERSONA</div>
-                <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>
-                  {persona["ラベル"] || "（ラベルなし）"}
-                </div>
-                <div style={{ fontSize: 12, color: COLORS.greyblue, marginTop: 4 }}>
-                  {(clientName || "—") + " ／ " + (position || "—") + " ／ " + experience}
-                </div>
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                <Field label="クライアント名">
+                  <input
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder="例：株式会社ユウキ建設様"
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="ポジション">
+                  <input
+                    value={position}
+                    onChange={(e) => setPosition(e.target.value)}
+                    placeholder="例：施工管理"
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="雇用条件" grow={false}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {EXPERIENCE.map((x) => (
+                      <button
+                        key={x}
+                        onClick={() => setExperience(x)}
+                        style={{
+                          ...chipStyle,
+                          background: experience === x ? COLORS.ink : COLORS.paper,
+                          color: experience === x ? COLORS.paper : COLORS.inkSoft,
+                          borderColor: experience === x ? COLORS.ink : COLORS.line,
+                        }}
+                      >
+                        {x}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
               </div>
 
-              <div style={{ padding: "8px 22px 22px" }}>
-                <Row label="基本属性" value={persona["基本属性"]} />
-                <Row label="現状" value={persona["現状"]} />
-                <Row label="転職動機（顕在）" value={persona["転職動機_顕在"]} />
-                <Row label="転職動機（潜在）" value={persona["転職動機_潜在"]} accent />
-                <RowList label="重視する条件" items={persona["重視する条件"]} />
-                <RowList label="不安・障壁" items={persona["不安_障壁"]} />
-                <Row label="意思決定の軸" value={persona["意思決定の軸"]} />
-                <Row label="情報接触" value={persona["情報接触"]} />
+              <div style={{ marginTop: 16 }}>
+                <label style={labelStyle}>tl;dv議事録</label>
+                <textarea
+                  value={transcript}
+                  onChange={(e) => setTranscript(e.target.value)}
+                  placeholder="tl;dvの文字起こし／議事録をそのまま貼り付けてください。"
+                  rows={10}
+                  style={{
+                    ...inputStyle,
+                    width: "100%",
+                    resize: "vertical",
+                    lineHeight: 1.7,
+                    fontFamily: FONT,
+                    marginTop: 6,
+                  }}
+                />
+              </div>
 
-                {persona["訴求の方向性"] ? (
-                  <div
-                    style={{
-                      marginTop: 16,
-                      paddingTop: 16,
-                      borderTop: "1px dashed " + COLORS.line,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        letterSpacing: 1.5,
-                        color: COLORS.greyblue,
-                        fontWeight: 700,
-                        marginBottom: 10,
-                      }}
-                    >
-                      訴求の方向性（求人票生成のインプット）
-                    </div>
-                    <Chips label="刺さる軸" items={persona["訴求の方向性"]["刺さる軸"]} />
-                    <RowList
-                      label="キーメッセージ案"
-                      items={persona["訴求の方向性"]["キーメッセージ案"]}
-                      tight
-                    />
-                    <Chips label="NG訴求" items={persona["訴求の方向性"]["NG訴求"]} danger />
-                  </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 16 }}>
+                <button
+                  onClick={generate}
+                  disabled={!canGenerate}
+                  style={{
+                    background: canGenerate ? COLORS.ink : COLORS.greyblue,
+                    color: COLORS.paper,
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "13px 26px",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    cursor: canGenerate ? "pointer" : "not-allowed",
+                    fontFamily: FONT,
+                  }}
+                >
+                  {loading ? "生成中…" : "ペルソナを生成"}
+                </button>
+                {transcript.trim().length > 0 && transcript.trim().length <= 20 ? (
+                  <span style={{ fontSize: 12, color: COLORS.greyblue }}>
+                    議事録をもう少し貼ってください
+                  </span>
                 ) : null}
               </div>
             </div>
 
-            <button
-              onClick={() => setShowJson(!showJson)}
-              style={{
-                marginTop: 12,
-                background: "none",
-                border: "none",
-                color: COLORS.greyblue,
-                fontSize: 12,
-                cursor: "pointer",
-                fontFamily: FONT,
-                padding: 0,
-              }}
-            >
-              {showJson ? "生出力を隠す ▲" : "生出力（JSON）を表示 ▼"}
-            </button>
-            {showJson ? (
-              <pre
+            {error ? (
+              <div
                 style={{
-                  marginTop: 8,
-                  background: COLORS.ink,
-                  color: "#E8E8E8",
-                  padding: 16,
+                  marginTop: 18,
+                  padding: "14px 16px",
                   borderRadius: 10,
-                  fontSize: 12,
-                  overflowX: "auto",
-                  lineHeight: 1.6,
-                  whiteSpace: "pre-wrap",
+                  background: "#FBEDE9",
+                  border: "1px solid #E9C9BF",
+                  color: "#8A3A22",
+                  fontSize: 14,
                 }}
               >
-                {raw}
-              </pre>
+                {error}
+              </div>
             ) : null}
+
+            {persona ? (
+              <div style={{ marginTop: 28 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    marginBottom: 14,
+                  }}
+                >
+                  <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>生成されたペルソナ</h2>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <SmallBtn onClick={() => copy("text")} active={copied === "text"}>
+                      {copied === "text" ? "コピーしました" : "テキストでコピー"}
+                    </SmallBtn>
+                    <SmallBtn onClick={() => copy("json")} active={copied === "json"}>
+                      {copied === "json" ? "コピーしました" : "JSONをコピー"}
+                    </SmallBtn>
+                    <button
+                      onClick={savePersona}
+                      disabled={saveState === "saving" || saveState === "saved"}
+                      style={{
+                        background: saveState === "saved" ? COLORS.greyblue : COLORS.ink,
+                        color: COLORS.paper,
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "8px 16px",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor:
+                          saveState === "saving" || saveState === "saved"
+                            ? "default"
+                            : "pointer",
+                        fontFamily: FONT,
+                      }}
+                    >
+                      {saveState === "saving"
+                        ? "保存中…"
+                        : saveState === "saved"
+                        ? "保存済み ✓"
+                        : "このペルソナを保存"}
+                    </button>
+                  </div>
+                </div>
+
+                {saveMsg ? (
+                  <div
+                    style={{
+                      marginBottom: 12,
+                      fontSize: 13,
+                      color: saveState === "error" ? "#8A3A22" : COLORS.inkSoft,
+                    }}
+                  >
+                    {saveMsg}
+                  </div>
+                ) : null}
+
+                <div
+                  style={{
+                    background: COLORS.paper,
+                    border: "1px solid " + COLORS.line,
+                    borderRadius: 14,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ background: COLORS.ink, color: COLORS.paper, padding: "16px 22px" }}>
+                    <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.sand }}>PERSONA</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>
+                      {persona["ラベル"] || "（ラベルなし）"}
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.greyblue, marginTop: 4 }}>
+                      {(clientName || "—") + " ／ " + (position || "—") + " ／ " + experience}
+                    </div>
+                  </div>
+                  <div style={{ padding: "8px 22px 22px" }}>
+                    <PersonaBody persona={persona} />
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowJson(!showJson)}
+                  style={{
+                    marginTop: 12,
+                    background: "none",
+                    border: "none",
+                    color: COLORS.greyblue,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    fontFamily: FONT,
+                    padding: 0,
+                  }}
+                >
+                  {showJson ? "生出力を隠す ▲" : "生出力（JSON）を表示 ▼"}
+                </button>
+                {showJson ? (
+                  <pre
+                    style={{
+                      marginTop: 8,
+                      background: COLORS.ink,
+                      color: "#E8E8E8",
+                      padding: 16,
+                      borderRadius: 10,
+                      fontSize: 12,
+                      overflowX: "auto",
+                      lineHeight: 1.6,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {raw}
+                  </pre>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {view === "list" ? (
+          <div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ fontSize: 13, color: COLORS.inkSoft }}>
+                保存したペルソナをクライアント別に表示します。
+              </div>
+              <SmallBtn onClick={loadList}>{listLoading ? "読込中…" : "再読み込み"}</SmallBtn>
+            </div>
+
+            {listError ? (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: "14px 16px",
+                  borderRadius: 10,
+                  background: "#FBEDE9",
+                  border: "1px solid #E9C9BF",
+                  color: "#8A3A22",
+                  fontSize: 14,
+                }}
+              >
+                {listError}
+              </div>
+            ) : null}
+
+            {!listLoading && listData.length === 0 && !listError ? (
+              <div
+                style={{
+                  padding: "40px 20px",
+                  textAlign: "center",
+                  color: COLORS.greyblue,
+                  background: COLORS.paper,
+                  border: "1px dashed " + COLORS.line,
+                  borderRadius: 14,
+                  fontSize: 14,
+                }}
+              >
+                まだ保存されたペルソナはありません。「ペルソナ生成」タブで作って保存してください。
+              </div>
+            ) : null}
+
+            {listData.map((client) => (
+              <div
+                key={client.id}
+                style={{
+                  marginBottom: 20,
+                  background: COLORS.paper,
+                  border: "1px solid " + COLORS.line,
+                  borderRadius: 14,
+                  padding: "16px 20px",
+                }}
+              >
+                <div style={{ fontSize: 17, fontWeight: 800 }}>{client.name}</div>
+
+                {(client.positions || []).map((pos) => (
+                  <div key={pos.id} style={{ marginTop: 14, paddingLeft: 4 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.inkSoft }}>
+                      {pos.name}
+                    </div>
+
+                    {(pos.conditions || []).map((cond) => {
+                      const personas = (cond.personas || [])
+                        .slice()
+                        .sort((a, b) =>
+                          a.created_at < b.created_at ? 1 : -1
+                        );
+                      return (
+                        <div key={cond.id} style={{ marginTop: 8, paddingLeft: 12 }}>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: COLORS.greyblue,
+                              fontWeight: 700,
+                              marginBottom: 6,
+                            }}
+                          >
+                            {cond.experience}
+                          </div>
+
+                          {personas.map((p) => {
+                            const open = expandedId === p.id;
+                            const dateStr = p.created_at
+                              ? new Date(p.created_at).toLocaleDateString("ja-JP")
+                              : "";
+                            return (
+                              <div
+                                key={p.id}
+                                style={{
+                                  border: "1px solid " + COLORS.line,
+                                  borderRadius: 10,
+                                  marginBottom: 8,
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                    padding: "10px 14px",
+                                    background: open ? "#F4F1EC" : COLORS.paper,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                    {p.is_current ? (
+                                      <span
+                                        style={{
+                                          fontSize: 11,
+                                          fontWeight: 700,
+                                          color: COLORS.paper,
+                                          background: COLORS.ink,
+                                          borderRadius: 999,
+                                          padding: "2px 8px",
+                                        }}
+                                      >
+                                        現行
+                                      </span>
+                                    ) : null}
+                                    <span style={{ fontSize: 14, fontWeight: 700 }}>
+                                      {p.label || "（ラベルなし）"}
+                                    </span>
+                                    <span style={{ fontSize: 12, color: COLORS.greyblue }}>
+                                      {dateStr}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <SmallBtn onClick={() => setExpandedId(open ? "" : p.id)}>
+                                      {open ? "閉じる" : "開く"}
+                                    </SmallBtn>
+                                    <button
+                                      onClick={() => deletePersona(p.id)}
+                                      style={{
+                                        background: COLORS.paper,
+                                        border: "1px solid #E9C9BF",
+                                        color: "#8A3A22",
+                                        borderRadius: 8,
+                                        padding: "8px 12px",
+                                        fontSize: 13,
+                                        fontWeight: 600,
+                                        cursor: "pointer",
+                                        fontFamily: FONT,
+                                      }}
+                                    >
+                                      削除
+                                    </button>
+                                  </div>
+                                </div>
+                                {open ? (
+                                  <div style={{ padding: "8px 18px 18px" }}>
+                                    <PersonaBody persona={p.data} />
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         ) : null}
       </div>
@@ -408,6 +678,71 @@ const chipStyle = {
   fontFamily: FONT,
   fontWeight: 600,
 };
+
+function TabBtn(props: any) {
+  return (
+    <button
+      onClick={props.onClick}
+      style={{
+        background: props.active ? COLORS.ink : COLORS.paper,
+        color: props.active ? COLORS.paper : COLORS.inkSoft,
+        border: "1px solid " + (props.active ? COLORS.ink : COLORS.line),
+        borderRadius: 999,
+        padding: "9px 18px",
+        fontSize: 14,
+        fontWeight: 700,
+        cursor: "pointer",
+        fontFamily: FONT,
+      }}
+    >
+      {props.children}
+    </button>
+  );
+}
+
+function PersonaBody(props: any) {
+  const persona = props.persona || {};
+  return (
+    <div>
+      <Row label="基本属性" value={persona["基本属性"]} />
+      <Row label="現状" value={persona["現状"]} />
+      <Row label="転職動機（顕在）" value={persona["転職動機_顕在"]} />
+      <Row label="転職動機（潜在）" value={persona["転職動機_潜在"]} accent />
+      <RowList label="重視する条件" items={persona["重視する条件"]} />
+      <RowList label="不安・障壁" items={persona["不安_障壁"]} />
+      <Row label="意思決定の軸" value={persona["意思決定の軸"]} />
+      <Row label="情報接触" value={persona["情報接触"]} />
+      {persona["訴求の方向性"] ? (
+        <div
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px dashed " + COLORS.line,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: 1.5,
+              color: COLORS.greyblue,
+              fontWeight: 700,
+              marginBottom: 10,
+            }}
+          >
+            訴求の方向性（求人票生成のインプット）
+          </div>
+          <Chips label="刺さる軸" items={persona["訴求の方向性"]["刺さる軸"]} />
+          <RowList
+            label="キーメッセージ案"
+            items={persona["訴求の方向性"]["キーメッセージ案"]}
+            tight
+          />
+          <Chips label="NG訴求" items={persona["訴求の方向性"]["NG訴求"]} danger />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function Field(props: any) {
   const grow = props.grow !== false;
