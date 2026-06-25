@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Home from "./Home";
 import JobAds from "./JobAds";
 
 const COLORS = {
@@ -19,7 +20,7 @@ const FONT =
 const EXPERIENCE = ["経験者", "未経験", "不問"];
 
 export default function Page() {
-  const [view, setView] = useState("generate");
+  const [view, setView] = useState("home");
 
   const [clientName, setClientName] = useState("");
   const [position, setPosition] = useState("");
@@ -221,39 +222,21 @@ export default function Page() {
   return (
     <div
       style={{
-        background: COLORS.bg,
+        display: "flex",
         minHeight: "100vh",
+        background: COLORS.bg,
         fontFamily: FONT,
         color: COLORS.ink,
       }}
     >
-      <div style={{ maxWidth: 920, margin: "0 auto", padding: "32px 20px 80px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12, letterSpacing: 3, color: COLORS.greyblue, fontWeight: 700 }}>
-            HATCH PROMOTION
-          </span>
-          <span style={{ color: COLORS.line }}>|</span>
-          <span style={{ fontSize: 12, letterSpacing: 2, color: COLORS.greyblue }}>
-            PERSONA ENGINE
-          </span>
-        </div>
-        <h1 style={{ fontSize: 30, fontWeight: 800, margin: "10px 0 14px", lineHeight: 1.25 }}>
-          ペルソナ生成エンジン
-        </h1>
+      <Sidebar view={view} onNavigate={switchView} />
+      <main style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ maxWidth: 980, margin: "0 auto", padding: "32px 28px 80px" }}>
+          <SectionTitle view={view} />
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
-          <TabBtn active={view === "generate"} onClick={() => switchView("generate")}>
-            ペルソナ生成
-          </TabBtn>
-          <TabBtn active={view === "list"} onClick={() => switchView("list")}>
-            保存済み一覧
-          </TabBtn>
-          <TabBtn active={view === "jobad"} onClick={() => switchView("jobad")}>
-            求人票
-          </TabBtn>
-        </div>
+          {view === "home" ? <Home onNavigate={switchView} /> : null}
 
-        {view === "generate" ? (
+          {view === "generate" ? (
           <div>
             <div
               style={{
@@ -661,8 +644,9 @@ export default function Page() {
           </div>
         ) : null}
 
-        {view === "jobad" ? <JobAds /> : null}
-      </div>
+          {view === "jobad" ? <JobAds /> : null}
+        </div>
+      </main>
     </div>
   );
 }
@@ -695,23 +679,132 @@ const chipStyle = {
   fontWeight: 600,
 };
 
-function TabBtn(props: any) {
+function SectionTitle(props: any) {
+  const titles: any = {
+    home: "ホーム",
+    generate: "ペルソナ生成",
+    list: "ペルソナ一覧",
+    jobad: "求人票",
+  };
   return (
-    <button
-      onClick={props.onClick}
+    <div style={{ marginBottom: 22 }}>
+      <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.greyblue, fontWeight: 700 }}>
+        HATCH PROMOTION RMS
+      </div>
+      <h1 style={{ fontSize: 26, fontWeight: 800, margin: "6px 0 0", lineHeight: 1.25 }}>
+        {titles[props.view] || ""}
+      </h1>
+    </div>
+  );
+}
+
+function Sidebar(props: any) {
+  const view = props.view;
+  const go = props.onNavigate;
+  return (
+    <aside
       style={{
-        background: props.active ? COLORS.ink : COLORS.paper,
-        color: props.active ? COLORS.paper : COLORS.inkSoft,
-        border: "1px solid " + (props.active ? COLORS.ink : COLORS.line),
-        borderRadius: 999,
-        padding: "9px 18px",
-        fontSize: 14,
-        fontWeight: 700,
-        cursor: "pointer",
-        fontFamily: FONT,
+        width: 232,
+        flexShrink: 0,
+        background: COLORS.paper,
+        borderRight: "1px solid " + COLORS.line,
+        minHeight: "100vh",
+        padding: "24px 16px",
+        boxSizing: "border-box" as const,
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      {props.children}
+      <div style={{ padding: "0 8px 18px" }}>
+        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 1 }}>ハチプロ RMS</div>
+        <div style={{ fontSize: 11, color: COLORS.greyblue, marginTop: 2 }}>採用管理システム</div>
+      </div>
+
+      <NavGroup label="ホーム" />
+      <NavItem active={view === "home"} onClick={() => go("home")} label="ホーム" />
+
+      <NavGroup label="制作" />
+      <NavItem active={view === "generate"} onClick={() => go("generate")} label="ペルソナ生成" />
+      <NavItem active={view === "list"} onClick={() => go("list")} label="ペルソナ一覧" />
+      <NavItem active={view === "jobad"} onClick={() => go("jobad")} label="求人票" />
+
+      <NavGroup label="管理" />
+      <NavItem disabled label="クライアント一覧（準備中）" />
+      <NavItem disabled label="数値管理（準備中）" />
+
+      <div style={{ marginTop: "auto", paddingTop: 18 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px",
+            borderTop: "1px solid " + COLORS.line,
+          }}
+        >
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 999,
+              background: COLORS.ink,
+              color: COLORS.paper,
+              fontSize: 13,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            寺
+          </div>
+          <div style={{ fontSize: 13, color: COLORS.inkSoft }}>teraki</div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function NavGroup(props: any) {
+  return (
+    <div
+      style={{
+        fontSize: 10,
+        letterSpacing: 1.5,
+        color: COLORS.greyblue,
+        fontWeight: 700,
+        padding: "16px 8px 6px",
+      }}
+    >
+      {props.label}
+    </div>
+  );
+}
+
+function NavItem(props: any) {
+  const disabled = props.disabled;
+  const active = props.active;
+  return (
+    <button
+      onClick={disabled ? undefined : props.onClick}
+      disabled={disabled}
+      style={{
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        background: active ? COLORS.ink : "transparent",
+        color: disabled ? COLORS.greyblue : active ? COLORS.paper : COLORS.ink,
+        border: "none",
+        borderRadius: 8,
+        padding: "10px 12px",
+        fontSize: 14,
+        fontWeight: active ? 700 : 500,
+        cursor: disabled ? "default" : "pointer",
+        fontFamily: FONT,
+        marginBottom: 2,
+      }}
+    >
+      {props.label}
     </button>
   );
 }
