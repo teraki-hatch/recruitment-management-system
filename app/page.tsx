@@ -525,7 +525,7 @@ export default function Page() {
                   personaCount = personaCount + (cond.personas ? cond.personas.length : 0);
                 });
               });
-              const clientOpen = openClients[client.id] || listData.length === 1;
+              const clientOpen = !!openClients[client.id];
               return (
               <div
                 key={client.id}
