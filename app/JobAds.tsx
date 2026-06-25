@@ -57,9 +57,23 @@ export default function JobAds() {
         (c.positions || []).forEach(function (p) {
           (p.conditions || []).forEach(function (cond) {
             (cond.personas || []).forEach(function (per) {
+              const dt = per.created_at ? new Date(per.created_at) : null;
+              const pad = (n) => (n < 10 ? "0" + n : "" + n);
+              const stamp = dt
+                ? dt.getFullYear() +
+                  "/" +
+                  pad(dt.getMonth() + 1) +
+                  "/" +
+                  pad(dt.getDate()) +
+                  " " +
+                  pad(dt.getHours()) +
+                  ":" +
+                  pad(dt.getMinutes())
+                : "";
               flat.push({
                 id: per.id,
                 label:
+                  (stamp ? stamp + " ｜ " : "") +
                   c.name +
                   " / " +
                   p.name +
