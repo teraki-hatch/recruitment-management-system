@@ -40,6 +40,7 @@ export default function Page() {
   const [listData, setListData] = useState([]);
   const [listError, setListError] = useState("");
   const [expandedId, setExpandedId] = useState("");
+  const [openClients, setOpenClients] = useState({});
 
   const canGenerate = transcript.trim().length > 20 && !loading;
 
@@ -159,6 +160,14 @@ export default function Page() {
   function switchView(v) {
     setView(v);
     if (v === "list") loadList();
+  }
+
+  function toggleClient(id) {
+    setOpenClients(function (prev) {
+      const next = Object.assign({}, prev);
+      next[id] = !next[id];
+      return next;
+    });
   }
 
   function asList(arr, indent) {
@@ -505,11 +514,19 @@ export default function Page() {
                   fontSize: 14,
                 }}
               >
-                まだ保存されたペルソナはありません。「ペルソナ生成」タブで作って保存してください。
+                まだ保存されたペルソナはありません。左メニュー「ペルソナ生成」で作って保存してください。
               </div>
             ) : null}
 
-            {listData.map((client) => (
+            {listData.map((client) => {
+              let personaCount = 0;
+              (client.positions || []).forEach((pos) => {
+                (pos.conditions || []).forEach((cond) => {
+                  personaCount = personaCount + (cond.personas ? cond.personas.length : 0);
+                });
+              });
+              const clientOpen = openClients[client.id] || listData.length === 1;
+              return (
               <div
                 key={client.id}
                 style={{
@@ -520,9 +537,38 @@ export default function Page() {
                   padding: "16px 20px",
                 }}
               >
-                <div style={{ fontSize: 17, fontWeight: 800 }}>{client.name}</div>
+                <div
+                  onClick={() => toggleClient(client.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 13, color: COLORS.greyblue }}>
+                      {clientOpen ? "▼" : "▶"}
+                    </span>
+                    <span style={{ fontSize: 17, fontWeight: 800 }}>{client.name}</span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: COLORS.inkSoft,
+                      background: COLORS.bg,
+                      border: "1px solid " + COLORS.line,
+                      borderRadius: 999,
+                      padding: "3px 12px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    ペルソナ {personaCount}件
+                  </span>
+                </div>
 
-                {(client.positions || []).map((pos) => (
+                {clientOpen
+                  ? (client.positions || []).map((pos) => (
                   <div key={pos.id} style={{ marginTop: 14, paddingLeft: 4 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.inkSoft }}>
                       {pos.name}
@@ -638,9 +684,11 @@ export default function Page() {
                       );
                     })}
                   </div>
-                ))}
+                  ))
+                  : null}
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : null}
 
