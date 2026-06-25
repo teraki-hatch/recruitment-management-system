@@ -20,7 +20,7 @@ export async function GET() {
   const r = await db
     .from("postings")
     .select(
-      "id,title,airwork_id,indeed_id,status,created_at,positions(id,name,clients(id,name))"
+      "id,title,airwork_id,indeed_id,job_url,status,source_airwork_id,created_at,positions(id,name,clients(id,name))"
     )
     .order("created_at", { ascending: false });
   if (r.error) return fail(r.error.message);
@@ -45,7 +45,6 @@ export async function POST(req) {
     return fail("クライアント名とポジション名は必須です。", 400);
   }
 
-  // get-or-create client
   let clientId = "";
   const c1 = await db.from("clients").select("id").eq("name", clientName).limit(1);
   if (c1.error) return fail(c1.error.message);
@@ -57,7 +56,6 @@ export async function POST(req) {
     clientId = ci.data.id;
   }
 
-  // get-or-create position
   let positionId = "";
   const p1 = await db
     .from("positions")
@@ -78,7 +76,6 @@ export async function POST(req) {
     positionId = pi.data.id;
   }
 
-  // insert posting
   const ins = await db
     .from("postings")
     .insert({
@@ -86,7 +83,8 @@ export async function POST(req) {
       title: (body.title || "").trim(),
       airwork_id: (body.airworkId || "").trim(),
       indeed_id: (body.indeedId || "").trim(),
-      status: body.status || "募集中",
+      status: body.status || "未作成",
+      source_airwork_id: (body.sourceAirworkId || "").trim(),
     })
     .select("id")
     .single();
