@@ -60,7 +60,8 @@ export default function Numbers(props: any) {
   const [title, setTitle] = useState("");
   const [airworkId, setAirworkId] = useState("");
   const [indeedId, setIndeedId] = useState("");
-  const [status, setStatus] = useState("募集中");
+  const [status, setStatus] = useState("未作成");
+  const [sourceAirworkId, setSourceAirworkId] = useState("");
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
@@ -136,6 +137,7 @@ export default function Numbers(props: any) {
           airworkId: airworkId,
           indeedId: indeedId,
           status: status,
+          sourceAirworkId: sourceAirworkId,
         }),
       });
       const data = await res.json();
@@ -145,6 +147,7 @@ export default function Numbers(props: any) {
         setTitle("");
         setAirworkId("");
         setIndeedId("");
+        setSourceAirworkId("");
         await load();
       }
     } catch (e) {
@@ -244,6 +247,14 @@ export default function Numbers(props: any) {
         </div>
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+          <Field label="複製元AirWork ID（複製で作る場合）" width={230}>
+            <input
+              value={sourceAirworkId}
+              onChange={(e) => setSourceAirworkId(e.target.value)}
+              placeholder="11669158"
+              style={Object.assign({}, inputStyle, { width: "100%" })}
+            />
+          </Field>
           <Field label="AirWork ID（作成後に貼付・任意）" width={210}>
             <input
               value={airworkId}
@@ -252,7 +263,7 @@ export default function Numbers(props: any) {
               style={Object.assign({}, inputStyle, { width: "100%" })}
             />
           </Field>
-          <Field label="Indeed ID（任意）" width={180}>
+          <Field label="Indeed ID（任意）" width={150}>
             <input
               value={indeedId}
               onChange={(e) => setIndeedId(e.target.value)}
@@ -260,13 +271,14 @@ export default function Numbers(props: any) {
               style={Object.assign({}, inputStyle, { width: "100%" })}
             />
           </Field>
-          <Field label="ステータス" width={150}>
+          <Field label="工程ステータス" width={160}>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
               style={Object.assign({}, inputStyle, { width: "100%" })}
             >
-              <option value="募集中">募集中</option>
+              <option value="未作成">未作成（AirWork自動作成待ち）</option>
+              <option value="掲載中">掲載中</option>
               <option value="募集停止中">募集停止中</option>
             </select>
           </Field>
@@ -375,10 +387,34 @@ export default function Numbers(props: any) {
                               <div style={{ fontSize: 14, fontWeight: 700 }}>
                                 {p.title || "（タイトル未設定）"}
                               </div>
-                              <div style={{ fontSize: 12, color: COLORS.greyblue, marginTop: 3 }}>
-                                {p.airwork_id ? "AirWork: " + p.airwork_id : "AirWork ID未設定"}
-                                {"　/　"}
-                                {p.status}
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  flexWrap: "wrap",
+                                  marginTop: 5,
+                                }}
+                              >
+                                <span style={statusBadge(p.status)}>{p.status || "—"}</span>
+                                <span style={{ fontSize: 12, color: COLORS.greyblue }}>
+                                  {p.airwork_id ? "AirWork: " + p.airwork_id : "AirWork ID未発番"}
+                                </span>
+                                {p.job_url ? (
+                                  <a
+                                    href={p.job_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{ fontSize: 12, color: "#3A6EA5" }}
+                                  >
+                                    求人URL ↗
+                                  </a>
+                                ) : null}
+                                {p.source_airwork_id ? (
+                                  <span style={{ fontSize: 12, color: COLORS.greyblue }}>
+                                    複製元: {p.source_airwork_id}
+                                  </span>
+                                ) : null}
                               </div>
                             </div>
                             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -622,6 +658,33 @@ function Field(props: any) {
       {props.children}
     </div>
   );
+}
+
+function statusBadge(status) {
+  let bg = "#EFEAE3";
+  let fg = COLORS.inkSoft;
+  if (status === "未作成") {
+    bg = "#FBF1D9";
+    fg = "#8A6D1B";
+  } else if (status === "掲載中") {
+    bg = "#E3F0E6";
+    fg = "#2F6B43";
+  } else if (status === "募集停止中") {
+    bg = "#F0E3E3";
+    fg = "#8A3B3B";
+  } else if (status === "作成中") {
+    bg = "#E3E9F0";
+    fg = "#365A85";
+  }
+  return {
+    fontSize: 12,
+    fontWeight: 700,
+    color: fg,
+    background: bg,
+    borderRadius: 999,
+    padding: "3px 11px",
+    whiteSpace: "nowrap",
+  };
 }
 
 function smallBtn(active) {
