@@ -569,7 +569,15 @@ export default function Page() {
                             const d = p.created_at ? new Date(p.created_at) : null;
                             const pad = (n) => (n < 10 ? "0" + n : "" + n);
                             const dateStr = d
-                              ? d.getFullYear() + "/" + pad(d.getMonth() + 1) + "/" + pad(d.getDate())
+                              ? d.getFullYear() +
+                                "/" +
+                                pad(d.getMonth() + 1) +
+                                "/" +
+                                pad(d.getDate()) +
+                                " " +
+                                pad(d.getHours()) +
+                                ":" +
+                                pad(d.getMinutes())
                               : "";
                             return (
                               <div
