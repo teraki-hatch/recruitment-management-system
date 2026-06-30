@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const COLORS = {
   ink: "#121212",
@@ -106,6 +106,11 @@ export default function Postings() {
   const [formState, setFormState] = useState("idle");
   const [formMsg, setFormMsg] = useState("");
 
+  // クライアントcombobox
+  const [clients, setClients] = useState([]);
+  const [clientOpen, setClientOpen] = useState(false);
+  const clientBoxRef = useRef(null);
+
   // 求人票取り込み用
   const [personas, setPersonas] = useState([]);
   const [selPersona, setSelPersona] = useState("");
@@ -117,6 +122,20 @@ export default function Postings() {
   useEffect(function () {
     load();
     loadPersonas();
+    loadClients();
+  }, []);
+
+  // combobox外クリックで候補を閉じる
+  useEffect(function () {
+    function onDocClick(e) {
+      if (clientBoxRef.current && !clientBoxRef.current.contains(e.target)) {
+        setClientOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return function () {
+      document.removeEventListener("mousedown", onDocClick);
+    };
   }, []);
 
   async function load() {
@@ -135,6 +154,17 @@ export default function Postings() {
       setError("一覧の取得に失敗しました。");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // クライアントマスタを取得
+  async function loadClients() {
+    try {
+      const res = await fetch("/api/clients", { method: "GET" });
+      const data = await res.json();
+      setClients(data.clients || []);
+    } catch (e) {
+      // 取得失敗は静かに無視（combobox候補が空になるだけ）
     }
   }
 
@@ -190,6 +220,40 @@ export default function Postings() {
     });
   }
 
+  // クライアント名の入力変化（自由入力。候補を開く）
+  function onClientInput(val) {
+    setFormField("clientName", val);
+    setClientOpen(true);
+    if (formState !== "idle") {
+      setFormState("idle");
+      setFormMsg("");
+    }
+  }
+
+  // 候補（既存クライアント）を選んで確定
+  function pickClient(name) {
+    setFormField("clientName", name);
+    setClientOpen(false);
+  }
+
+  // いま入力中の文字でマスタを絞り込む
+  function filteredClients() {
+    const q = (form.clientName || "").trim();
+    if (!q) return clients;
+    return clients.filter(function (c) {
+      return ("" + (c.name || "")).indexOf(q) >= 0;
+    });
+  }
+
+  // 入力値が既存マスタと完全一致しているか
+  function exactClientExists() {
+    const q = (form.clientName || "").trim();
+    if (!q) return false;
+    return clients.some(function (c) {
+      return ("" + (c.name || "")).trim() === q;
+    });
+  }
+
   // 掲載求人を1件登録する（5項目は持たせず、複製元ID・status・識別情報のみ）
   async function submitForm() {
     const clientName = (form.clientName || "").trim();
@@ -229,6 +293,7 @@ export default function Postings() {
         status: "未作成",
       });
       load();
+      loadClients();
     } catch (e) {
       setFormState("error");
       setFormMsg("登録に失敗しました。");
@@ -355,6 +420,10 @@ export default function Postings() {
     return n;
   }
 
+  const cFiltered = filteredClients();
+  const cExact = exactClientExists();
+  const cTyped = (form.clientName || "").trim();
+
   return (
     <div>
       <div
@@ -422,18 +491,86 @@ export default function Postings() {
               gap: 14,
             }}
           >
-            <div>
+            <div ref={clientBoxRef} style={{ position: "relative" }}>
               <label style={labelStyle}>クライアント名 ＊</label>
               <input
                 value={form.clientName}
                 onChange={function (e) {
-                  setFormField("clientName", e.target.value);
+                  onClientInput(e.target.value);
                 }}
-                placeholder="例：カイゼン・マーケティング"
+                onFocus={function () {
+                  setClientOpen(true);
+                }}
+                placeholder="既存から選ぶ／新規は入力"
                 style={{ ...inputStyle, width: "100%", marginTop: 6 }}
+                autoComplete="off"
               />
+              {clientOpen ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top: "100%",
+                    marginTop: 4,
+                    background: COLORS.paper,
+                    border: "1px solid " + COLORS.line,
+                    borderRadius: 10,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.10)",
+                    zIndex: 20,
+                    maxHeight: 260,
+                    overflowY: "auto",
+                  }}
+                >
+                  {cFiltered.length > 0 ? (
+                    cFiltered.map(function (c) {
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={function () {
+                            pickClient(c.name);
+                          }}
+                          style={{
+                            padding: "10px 12px",
+                            fontSize: 13,
+                            color: COLORS.ink,
+                            cursor: "pointer",
+                            borderBottom: "1px solid " + COLORS.line,
+                          }}
+                        >
+                          {c.name}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div style={{ padding: "10px 12px", fontSize: 12, color: COLORS.greyblue }}>
+                      一致する既存クライアントはありません
+                    </div>
+                  )}
+
+                  {cTyped && !cExact ? (
+                    <div
+                      onClick={function () {
+                        pickClient(cTyped);
+                      }}
+                      style={{
+                        padding: "11px 12px",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#1F6B3B",
+                        cursor: "pointer",
+                        background: "#F1F7F2",
+                      }}
+                    >
+                      ＋「{cTyped}」を新規クライアントとして登録
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div style={{ fontSize: 11, color: COLORS.greyblue, marginTop: 4 }}>
-                既存の名前なら紐付け、無ければ新規作成されます。
+                {cTyped && !cExact
+                  ? "この名前は新規クライアントになります（既存にある場合は上の候補から選んでください）。"
+                  : "既存の名前は一覧から選べます。表記ゆれによる二重登録を防ぎます。"}
               </div>
             </div>
 
