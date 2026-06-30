@@ -22,6 +22,56 @@ const AW_FIELDS = [
   { key: "aw_working_environment", label: "職場環境", max: 128, multiline: true, note: "" },
 ];
 
+// ===== 求人票(12項目) → AirWork5項目 のマッピング補助 =====
+// 職種名: ポジション名を記号除去＋30字トリム（AirWork制約）
+function sanitizeJobTitle(s) {
+  var t = "" + (s || "");
+  t = t.replace(/[^0-9A-Za-zぁ-んァ-ヶ一-龠々ー\u3000\s]/g, "");
+  t = t.replace(/\s+/g, " ").trim();
+  if (t.length > 30) t = t.slice(0, 30);
+  return t;
+}
+function trimTo(s, max) {
+  var t = ("" + (s || "")).trim();
+  if (t.length > max) t = t.slice(0, max);
+  return t;
+}
+// 見出し付き連結（空セクションは省く）
+function joinSections(pairs) {
+  var blocks = [];
+  for (var i = 0; i < pairs.length; i++) {
+    var label = pairs[i][0];
+    var body = ("" + (pairs[i][1] || "")).trim();
+    if (!body) continue;
+    blocks.push("【" + label + "】\n" + body);
+  }
+  return blocks.join("\n\n");
+}
+// 求人票data + ポジション名 → 5項目（aw_* キー）
+function mapJobAdToAw(d, positionName) {
+  d = d || {};
+  var jobDescription = joinSections([
+    ["仕事内容", d["仕事内容"]],
+    ["給与", d["給与"]],
+    ["勤務地", d["勤務地"]],
+    ["勤務時間", d["勤務時間"]],
+    ["休日休暇", d["休日休暇"]],
+    ["待遇・福利厚生", d["待遇・福利厚生"]],
+  ]);
+  var personal = joinSections([
+    ["求める人物像", d["求める人物像"]],
+    ["応募資格", d["応募資格"]],
+    ["歓迎要件", d["歓迎要件"]],
+  ]);
+  return {
+    aw_job_title: sanitizeJobTitle(positionName || ""),
+    aw_subtitle: trimTo(d["キャッチコピー"], 30),
+    aw_job_description: trimTo(jobDescription, 4000),
+    aw_personal: trimTo(personal, 4000),
+    aw_working_environment: trimTo(d["アピール文"], 128),
+  };
+}
+
 export default function Postings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -31,8 +81,17 @@ export default function Postings() {
   const [saveState, setSaveState] = useState("idle");
   const [saveMsg, setSaveMsg] = useState("");
 
+  // 求人票取り込み用
+  const [personas, setPersonas] = useState([]);
+  const [selPersona, setSelPersona] = useState("");
+  const [ads, setAds] = useState([]);
+  const [adsLoading, setAdsLoading] = useState(false);
+  const [selAd, setSelAd] = useState("");
+  const [importMsg, setImportMsg] = useState("");
+
   useEffect(function () {
     load();
+    loadPersonas();
   }, []);
 
   async function load() {
@@ -54,10 +113,58 @@ export default function Postings() {
     }
   }
 
+  // ペルソナ一覧をフラット化して取得（JobAdsと同じ経路）
+  async function loadPersonas() {
+    try {
+      const res = await fetch("/api/personas", { method: "GET" });
+      const data = await res.json();
+      const flat = [];
+      (data.clients || []).forEach(function (c) {
+        (c.positions || []).forEach(function (p) {
+          (p.conditions || []).forEach(function (cond) {
+            (cond.personas || []).forEach(function (per) {
+              flat.push({
+                id: per.id,
+                label:
+                  c.name + " / " + p.name + " / " + cond.experience + " / " + (per.label || "（ラベルなし）"),
+              });
+            });
+          });
+        });
+      });
+      setPersonas(flat);
+    } catch (e) {
+      // 取得失敗は静かに無視
+    }
+  }
+
+  async function loadAds(personaId) {
+    if (!personaId) {
+      setAds([]);
+      return;
+    }
+    setAdsLoading(true);
+    try {
+      const res = await fetch("/api/job-ads?persona_id=" + encodeURIComponent(personaId), {
+        method: "GET",
+      });
+      const data = await res.json();
+      setAds(data.job_ads || []);
+    } catch (e) {
+      setAds([]);
+    } finally {
+      setAdsLoading(false);
+    }
+  }
+
   function openEditor(it) {
     setOpenId(it.id);
     setSaveState("idle");
     setSaveMsg("");
+    setImportMsg("");
+    setSelPersona("");
+    setSelAd("");
+    setAds([]);
     const d = {};
     AW_FIELDS.forEach(function (f) {
       d[f.key] = it[f.key] || "";
@@ -69,6 +176,7 @@ export default function Postings() {
     setOpenId("");
     setSaveState("idle");
     setSaveMsg("");
+    setImportMsg("");
     setDraft({});
   }
 
@@ -78,6 +186,41 @@ export default function Postings() {
       next[key] = val;
       return next;
     });
+  }
+
+  function onSelectPersona(id) {
+    setSelPersona(id);
+    setSelAd("");
+    setImportMsg("");
+    loadAds(id);
+  }
+
+  // 選択中の求人票を5項目欄へ取り込む（職種名はその求人のポジション名から）
+  function importFromAd(it) {
+    if (!selAd) {
+      setImportMsg("取り込む求人票を選んでください。");
+      return;
+    }
+    const ad = ads.filter(function (a) {
+      return a.id === selAd;
+    })[0];
+    if (!ad) {
+      setImportMsg("求人票が見つかりません。");
+      return;
+    }
+    const pos = it.positions || {};
+    const positionName = pos.name || "";
+    const mapped = mapJobAdToAw(ad.data, positionName);
+    setDraft(function (prev) {
+      const next = Object.assign({}, prev);
+      AW_FIELDS.forEach(function (f) {
+        next[f.key] = mapped[f.key] || "";
+      });
+      return next;
+    });
+    setImportMsg("取り込みました。内容を確認して保存してください。");
+    setSaveState("idle");
+    setSaveMsg("");
   }
 
   async function save(id) {
@@ -152,14 +295,10 @@ export default function Postings() {
         </button>
       </div>
 
-      {error ? (
-        <div style={errorBoxStyle}>{error}</div>
-      ) : null}
+      {error ? <div style={errorBoxStyle}>{error}</div> : null}
 
       {!loading && items.length === 0 && !error ? (
-        <div style={emptyBoxStyle}>
-          掲載求人がまだありません。
-        </div>
+        <div style={emptyBoxStyle}>掲載求人がまだありません。</div>
       ) : null}
 
       {items.map(function (it) {
@@ -213,6 +352,92 @@ export default function Postings() {
 
             {open ? (
               <div style={{ padding: "8px 18px 20px" }}>
+                {/* 求人票から取り込む */}
+                <div
+                  style={{
+                    marginTop: 8,
+                    marginBottom: 6,
+                    padding: "14px 16px",
+                    background: COLORS.bg,
+                    border: "1px solid " + COLORS.line,
+                    borderRadius: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.inkSoft, marginBottom: 8 }}>
+                    求人票から取り込む（任意）
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <select
+                      value={selPersona}
+                      onChange={function (e) {
+                        onSelectPersona(e.target.value);
+                      }}
+                      style={selectStyle}
+                    >
+                      <option value="">— ペルソナを選ぶ —</option>
+                      {personas.map(function (p) {
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {p.label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <select
+                      value={selAd}
+                      onChange={function (e) {
+                        setSelAd(e.target.value);
+                        setImportMsg("");
+                      }}
+                      disabled={!selPersona || adsLoading}
+                      style={selectStyle}
+                    >
+                      <option value="">
+                        {adsLoading
+                          ? "読込中…"
+                          : !selPersona
+                          ? "— 先にペルソナを選択 —"
+                          : ads.length === 0
+                          ? "— 保存済み求人票なし —"
+                          : "— 求人票を選ぶ —"}
+                      </option>
+                      {ads.map(function (a) {
+                        return (
+                          <option key={a.id} value={a.id}>
+                            {"案" + (a.variant || "-") + " ｜ " + (a.title || "（無題）")}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <button
+                      onClick={function () {
+                        importFromAd(it);
+                      }}
+                      disabled={!selAd}
+                      style={{
+                        background: selAd ? COLORS.ink : COLORS.greyblue,
+                        color: COLORS.paper,
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "9px 16px",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: selAd ? "pointer" : "not-allowed",
+                        fontFamily: FONT,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      5項目に取り込む
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, color: COLORS.greyblue, marginTop: 8 }}>
+                    職種名はこの求人のポジション名（{(it.positions && it.positions.name) || "—"}）から自動セットされます。条件系（給与・勤務地など）は仕事内容にまとめられます。取り込み後に編集できます。
+                  </div>
+                  {importMsg ? (
+                    <div style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 6 }}>{importMsg}</div>
+                  ) : null}
+                </div>
+
                 {AW_FIELDS.map(function (f) {
                   const val = draft[f.key] || "";
                   const len = ("" + val).length;
@@ -326,6 +551,19 @@ const inputStyle = {
   outline: "none",
   background: COLORS.paper,
   fontFamily: FONT,
+  boxSizing: "border-box" as const,
+};
+const selectStyle = {
+  border: "1px solid " + COLORS.line,
+  borderRadius: 8,
+  padding: "9px 10px",
+  fontSize: 13,
+  color: COLORS.ink,
+  outline: "none",
+  background: COLORS.paper,
+  fontFamily: FONT,
+  flex: "1 1 200px",
+  minWidth: 160,
   boxSizing: "border-box" as const,
 };
 const labelStyle = {
