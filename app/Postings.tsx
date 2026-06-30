@@ -94,6 +94,18 @@ export default function Postings() {
   const [saveState, setSaveState] = useState("idle");
   const [saveMsg, setSaveMsg] = useState("");
 
+  // 新規登録フォーム
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    clientName: "",
+    positionName: "",
+    title: "",
+    sourceAirworkId: "",
+    status: "未作成",
+  });
+  const [formState, setFormState] = useState("idle");
+  const [formMsg, setFormMsg] = useState("");
+
   // 求人票取り込み用
   const [personas, setPersonas] = useState([]);
   const [selPersona, setSelPersona] = useState("");
@@ -167,6 +179,59 @@ export default function Postings() {
       setAds([]);
     } finally {
       setAdsLoading(false);
+    }
+  }
+
+  function setFormField(key, val) {
+    setForm(function (prev) {
+      const next = Object.assign({}, prev);
+      next[key] = val;
+      return next;
+    });
+  }
+
+  // 掲載求人を1件登録する（5項目は持たせず、複製元ID・status・識別情報のみ）
+  async function submitForm() {
+    const clientName = (form.clientName || "").trim();
+    const positionName = (form.positionName || "").trim();
+    if (!clientName || !positionName) {
+      setFormState("error");
+      setFormMsg("クライアント名とポジション名は必須です。");
+      return;
+    }
+    setFormState("saving");
+    setFormMsg("");
+    try {
+      const res = await fetch("/api/postings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: clientName,
+          positionName: positionName,
+          title: (form.title || "").trim(),
+          sourceAirworkId: (form.sourceAirworkId || "").trim(),
+          status: form.status || "未作成",
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setFormState("error");
+        setFormMsg(data.error);
+        return;
+      }
+      setFormState("saved");
+      setFormMsg("登録しました。");
+      setForm({
+        clientName: "",
+        positionName: "",
+        title: "",
+        sourceAirworkId: "",
+        status: "未作成",
+      });
+      load();
+    } catch (e) {
+      setFormState("error");
+      setFormMsg("登録に失敗しました。");
     }
   }
 
@@ -303,10 +368,174 @@ export default function Postings() {
         <div style={{ fontSize: 13, color: COLORS.inkSoft }}>
           掲載求人ごとに、AirWorkへ流し込む5項目（職種名・キャッチ・仕事内容・求める人材・職場環境）を編集します。
         </div>
-        <button onClick={load} style={smallBtnStyle}>
-          {loading ? "読込中…" : "再読み込み"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={function () {
+              setShowForm(function (v) {
+                return !v;
+              });
+              setFormState("idle");
+              setFormMsg("");
+            }}
+            style={{
+              background: showForm ? COLORS.ink : COLORS.paper,
+              color: showForm ? COLORS.paper : COLORS.ink,
+              border: "1px solid " + (showForm ? COLORS.ink : COLORS.line),
+              borderRadius: 8,
+              padding: "8px 14px",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: FONT,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {showForm ? "登録フォームを閉じる" : "＋新規登録"}
+          </button>
+          <button onClick={load} style={smallBtnStyle}>
+            {loading ? "読込中…" : "再読み込み"}
+          </button>
+        </div>
       </div>
+
+      {showForm ? (
+        <div
+          style={{
+            marginBottom: 18,
+            padding: "18px 20px",
+            background: COLORS.paper,
+            border: "1px solid " + COLORS.line,
+            borderRadius: 14,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.ink, marginBottom: 4 }}>
+            掲載求人を新規登録
+          </div>
+          <div style={{ fontSize: 12, color: COLORS.greyblue, marginBottom: 16 }}>
+            行を作るだけの軽い登録です。5項目（AirWork流し込み）は登録後に「5項目を編集」または求人票取り込みで入れられます。
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 14,
+            }}
+          >
+            <div>
+              <label style={labelStyle}>クライアント名 ＊</label>
+              <input
+                value={form.clientName}
+                onChange={function (e) {
+                  setFormField("clientName", e.target.value);
+                }}
+                placeholder="例：カイゼン・マーケティング"
+                style={{ ...inputStyle, width: "100%", marginTop: 6 }}
+              />
+              <div style={{ fontSize: 11, color: COLORS.greyblue, marginTop: 4 }}>
+                既存の名前なら紐付け、無ければ新規作成されます。
+              </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>ポジション名 ＊</label>
+              <input
+                value={form.positionName}
+                onChange={function (e) {
+                  setFormField("positionName", e.target.value);
+                }}
+                placeholder="例：動画編集スタッフ"
+                style={{ ...inputStyle, width: "100%", marginTop: 6 }}
+              />
+              <div style={{ fontSize: 11, color: COLORS.greyblue, marginTop: 4 }}>
+                取り込み時の職種名のもとになります。
+              </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>タイトル（識別ラベル）</label>
+              <input
+                value={form.title}
+                onChange={function (e) {
+                  setFormField("title", e.target.value);
+                }}
+                placeholder="例：動画編集スタッフ（複製本番）"
+                style={{ ...inputStyle, width: "100%", marginTop: 6 }}
+              />
+              <div style={{ fontSize: 11, color: COLORS.greyblue, marginTop: 4 }}>
+                一覧で見分けるための名前。任意。
+              </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>複製元ID（source_airwork_id）</label>
+              <input
+                value={form.sourceAirworkId}
+                onChange={function (e) {
+                  setFormField("sourceAirworkId", e.target.value);
+                }}
+                placeholder="例：11871143"
+                style={{ ...inputStyle, width: "100%", marginTop: 6 }}
+              />
+              <div style={{ fontSize: 11, color: COLORS.greyblue, marginTop: 4 }}>
+                AirWorkで複製のもとにする求人ID。一気通貫の複製ソースです。
+              </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>status</label>
+              <input
+                value={form.status}
+                onChange={function (e) {
+                  setFormField("status", e.target.value);
+                }}
+                placeholder="未作成"
+                style={{ ...inputStyle, width: "100%", marginTop: 6 }}
+              />
+              <div style={{ fontSize: 11, color: COLORS.greyblue, marginTop: 4 }}>
+                「未作成」のとき一気通貫のキューに乗ります。
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              marginTop: 18,
+            }}
+          >
+            <button
+              onClick={submitForm}
+              disabled={formState === "saving"}
+              style={{
+                background: COLORS.ink,
+                color: COLORS.paper,
+                border: "none",
+                borderRadius: 10,
+                padding: "11px 22px",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: formState === "saving" ? "default" : "pointer",
+                fontFamily: FONT,
+              }}
+            >
+              {formState === "saving" ? "登録中…" : "登録する"}
+            </button>
+            {formMsg ? (
+              <span
+                style={{
+                  fontSize: 13,
+                  color: formState === "error" ? "#8A3A22" : COLORS.inkSoft,
+                }}
+              >
+                {formMsg}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {error ? <div style={errorBoxStyle}>{error}</div> : null}
 
