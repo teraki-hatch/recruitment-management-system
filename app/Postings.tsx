@@ -31,10 +31,23 @@ function sanitizeJobTitle(s) {
   if (t.length > 30) t = t.slice(0, 30);
   return t;
 }
+// 句読点で綺麗に切るトリム。
+// 上限内の最後の句点(。！？)までで止める（文として完結させる）。
+// 句点が min(max*0.3, 8) 字以上の位置にあればそこで切り、無ければ文字数で素直に切る。
 function trimTo(s, max) {
   var t = ("" + (s || "")).trim();
-  if (t.length > max) t = t.slice(0, max);
-  return t;
+  if (t.length <= max) return t;
+  var head = t.slice(0, max);
+  var lastEnd = Math.max(
+    head.lastIndexOf("。"),
+    head.lastIndexOf("！"),
+    head.lastIndexOf("？")
+  );
+  var threshold = Math.min(Math.floor(max * 0.3), 8);
+  if (lastEnd >= threshold) {
+    return head.slice(0, lastEnd + 1);
+  }
+  return head;
 }
 // 見出し付き連結（空セクションは省く）
 function joinSections(pairs) {
