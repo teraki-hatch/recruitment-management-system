@@ -19,7 +19,8 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
 }
 
-// 拡張がAirWorkで作るべき「未作成」の掲載求人を返す
+// 拡張がAirWorkで作るべき「未作成」の掲載求人を返す。
+// 複製後の5項目上書き(ステップC)のため、aw_* 5項目も awFields としてまとめて返す。
 export async function GET() {
   const db = getDb();
   if (!db) {
@@ -27,7 +28,9 @@ export async function GET() {
   }
   const r = await db
     .from("postings")
-    .select("id,title,source_airwork_id,positions(name,clients(name))")
+    .select(
+      "id,title,source_airwork_id,aw_job_title,aw_subtitle,aw_job_description,aw_personal,aw_working_environment,positions(name,clients(name))"
+    )
     .eq("status", "未作成")
     .order("created_at", { ascending: true });
   if (r.error) {
@@ -42,6 +45,13 @@ export async function GET() {
       clientName: cl.name || "",
       positionName: pos.name || "",
       sourceAirworkId: p.source_airwork_id || "",
+      awFields: {
+        aw_job_title: p.aw_job_title || "",
+        aw_subtitle: p.aw_subtitle || "",
+        aw_job_description: p.aw_job_description || "",
+        aw_personal: p.aw_personal || "",
+        aw_working_environment: p.aw_working_environment || "",
+      },
     };
   });
   return Response.json({ queue: queue }, { headers: CORS });
