@@ -14,13 +14,14 @@ function fail(msg, code) {
 }
 
 // 掲載求人の一覧（求人 → ポジション → クライアント を join して返す）
+// aw_* の5項目（AirWork上書き用）も併せて返す。
 export async function GET() {
   const db = getDb();
   if (!db) return fail("SupabaseのURL/キーが未設定です。");
   const r = await db
     .from("postings")
     .select(
-      "id,title,airwork_id,indeed_id,job_url,status,source_airwork_id,created_at,positions(id,name,clients(id,name))"
+      "id,title,airwork_id,indeed_id,job_url,status,source_airwork_id,created_at,aw_job_title,aw_subtitle,aw_job_description,aw_personal,aw_working_environment,positions(id,name,clients(id,name))"
     )
     .order("created_at", { ascending: false });
   if (r.error) return fail(r.error.message);
@@ -31,20 +32,17 @@ export async function GET() {
 export async function POST(req) {
   const db = getDb();
   if (!db) return fail("SupabaseのURL/キーが未設定です。");
-
   let body = {};
   try {
     body = await req.json();
   } catch (e) {
     return fail("リクエストの形式が不正です。", 400);
   }
-
   const clientName = (body.clientName || "").trim();
   const positionName = (body.positionName || "").trim();
   if (!clientName || !positionName) {
     return fail("クライアント名とポジション名は必須です。", 400);
   }
-
   let clientId = "";
   const c1 = await db.from("clients").select("id").eq("name", clientName).limit(1);
   if (c1.error) return fail(c1.error.message);
@@ -55,7 +53,6 @@ export async function POST(req) {
     if (ci.error) return fail(ci.error.message);
     clientId = ci.data.id;
   }
-
   let positionId = "";
   const p1 = await db
     .from("positions")
@@ -75,7 +72,6 @@ export async function POST(req) {
     if (pi.error) return fail(pi.error.message);
     positionId = pi.data.id;
   }
-
   const ins = await db
     .from("postings")
     .insert({
@@ -89,8 +85,52 @@ export async function POST(req) {
     .select("id")
     .single();
   if (ins.error) return fail(ins.error.message);
-
   return Response.json({ id: ins.data.id });
+}
+
+// 掲載求人の AirWork上書き5項目を更新する。
+// body: { id, aw_job_title?, aw_subtitle?, aw_job_description?, aw_personal?, aw_working_environment? }
+// 渡されたキーだけ更新する（undefinedのキーは触らない）。
+export async function PATCH(req) {
+  const db = getDb();
+  if (!db) return fail("SupabaseのURL/キーが未設定です。");
+  let body = {};
+  try {
+    body = await req.json();
+  } catch (e) {
+    return fail("リクエストの形式が不正です。", 400);
+  }
+  const id = (body.id || "").trim();
+  if (!id) return fail("idが必要です。", 400);
+
+  const allowed = [
+    "aw_job_title",
+    "aw_subtitle",
+    "aw_job_description",
+    "aw_personal",
+    "aw_working_environment",
+  ];
+  const patch = {};
+  for (let i = 0; i < allowed.length; i++) {
+    const k = allowed[i];
+    if (typeof body[k] === "string") {
+      patch[k] = body[k];
+    }
+  }
+  if (Object.keys(patch).length === 0) {
+    return fail("更新対象の項目がありません。", 400);
+  }
+
+  const r = await db
+    .from("postings")
+    .update(patch)
+    .eq("id", id)
+    .select(
+      "id,aw_job_title,aw_subtitle,aw_job_description,aw_personal,aw_working_environment"
+    )
+    .single();
+  if (r.error) return fail(r.error.message);
+  return Response.json({ ok: true, posting: r.data });
 }
 
 // 掲載求人の削除（数値も cascade で消える）
