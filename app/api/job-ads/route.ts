@@ -97,11 +97,70 @@ async function generateVariants(personaData, transcript, clientName, positionNam
   clean = clean.split(fence).join("");
   clean = clean.trim();
 
-  let variants = null;
-  try {
-    variants = JSON.parse(clean);
-  } catch (e) {
-    variants = null;
+  // 配列本体だけを抜き出す（前後に説明文が混ざっても拾えるように）
+  const firstBracket = clean.indexOf("[");
+  const lastBracket = clean.lastIndexOf("]");
+  let body = clean;
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    body = clean.slice(firstBracket, lastBracket + 1);
+  }
+
+  // 文字列値の中に素の改行・タブ・復帰が入っているとJSON.parseが失敗するため、
+  // 文字列リテラル内の制御文字だけをエスケープ済みの表現に直す。
+  function repairControlChars(s) {
+    let out = "";
+    let inStr = false;
+    let prev = "";
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (inStr) {
+        if (ch === "\n") {
+          out += "\\n";
+          prev = ch;
+          continue;
+        }
+        if (ch === "\r") {
+          out += "\\r";
+          prev = ch;
+          continue;
+        }
+        if (ch === "\t") {
+          out += "\\t";
+          prev = ch;
+          continue;
+        }
+        if (ch === '"' && prev !== "\\") {
+          inStr = false;
+          out += ch;
+          prev = ch;
+          continue;
+        }
+        out += ch;
+        // バックスラッシュのエスケープ状態を正しく追うため、\\ は打ち消す
+        prev = prev === "\\" && ch === "\\" ? "" : ch;
+      } else {
+        if (ch === '"') {
+          inStr = true;
+        }
+        out += ch;
+        prev = ch;
+      }
+    }
+    return out;
+  }
+
+  let variants: any = null;
+  const candidates = [clean, body, repairControlChars(body), repairControlChars(clean)];
+  for (let i = 0; i < candidates.length; i++) {
+    try {
+      const parsed = JSON.parse(candidates[i]);
+      if (Array.isArray(parsed)) {
+        variants = parsed;
+        break;
+      }
+    } catch (e) {
+      // 次の候補へ
+    }
   }
   return { variants: variants, raw: text };
 }
