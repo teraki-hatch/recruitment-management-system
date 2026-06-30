@@ -4,6 +4,7 @@ import { useState } from "react";
 import Home from "./Home";
 import JobAds from "./JobAds";
 import Numbers from "./Numbers";
+import Postings from "./Postings";
 
 const COLORS = {
   ink: "#121212",
@@ -695,6 +696,8 @@ export default function Page() {
 
           {view === "jobad" ? <JobAds /> : null}
 
+          {view === "posting" ? <Postings /> : null}
+
           {view === "numbers" ? <Numbers /> : null}
         </div>
       </main>
@@ -736,6 +739,7 @@ function SectionTitle(props: any) {
     generate: "ペルソナ生成",
     list: "ペルソナ一覧",
     jobad: "求人票",
+    posting: "掲載求人",
     numbers: "数値管理",
   };
   return (
@@ -782,6 +786,7 @@ function Sidebar(props: any) {
 
       <NavGroup label="管理" />
       <NavItem disabled label="クライアント一覧（準備中）" />
+      <NavItem active={view === "posting"} onClick={() => go("posting")} label="掲載求人" />
       <NavItem active={view === "numbers"} onClick={() => go("numbers")} label="数値管理" />
 
       <div style={{ marginTop: "auto", paddingTop: 18 }}>
