@@ -24,6 +24,9 @@ const EXPERIENCE = ["経験者", "未経験", "不問"];
 export default function Page() {
   const [view, setView] = useState("home");
 
+  // ホームのクライアントカードから掲載求人へ遷移する際の絞り込み対象
+  const [selectedClient, setSelectedClient] = useState(null);
+
   const [clientName, setClientName] = useState("");
   const [position, setPosition] = useState("");
   const [experience, setExperience] = useState("不問");
@@ -160,8 +163,18 @@ export default function Page() {
   }
 
   function switchView(v) {
+    // 掲載求人以外へ移動したら、クライアント絞り込みは解除する
+    if (v !== "posting") {
+      setSelectedClient(null);
+    }
     setView(v);
     if (v === "list") loadList();
+  }
+
+  // ホームのクライアントカードから、そのクライアントで絞り込んだ掲載求人へ
+  function goPostingWithClient(client) {
+    setSelectedClient(client || null);
+    setView("posting");
   }
 
   function toggleClient(id) {
@@ -245,7 +258,9 @@ export default function Page() {
         <div style={{ maxWidth: 980, margin: "0 auto", padding: "32px 28px 80px" }}>
           <SectionTitle view={view} />
 
-          {view === "home" ? <Home onNavigate={switchView} /> : null}
+          {view === "home" ? (
+            <Home onNavigate={switchView} onOpenClient={goPostingWithClient} />
+          ) : null}
 
           {view === "generate" ? (
           <div>
@@ -696,7 +711,12 @@ export default function Page() {
 
           {view === "jobad" ? <JobAds /> : null}
 
-          {view === "posting" ? <Postings /> : null}
+          {view === "posting" ? (
+            <Postings
+              filterClient={selectedClient}
+              onClearFilter={() => setSelectedClient(null)}
+            />
+          ) : null}
 
           {view === "numbers" ? <Numbers /> : null}
         </div>
