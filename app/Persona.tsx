@@ -17,9 +17,13 @@ const FONT =
 
 const EXPERIENCE = ["経験者", "未経験", "不問"];
 
-export default function Persona() {
+export default function Persona(props: any) {
+  // このクライアントページで開いているクライアント（固定）
+  const client = props.client || {};
+  const clientName = client.name || "";
+  const clientId = client.id || "";
+
   // 生成フォーム
-  const [clientName, setClientName] = useState("");
   const [position, setPosition] = useState("");
   const [experience, setExperience] = useState("不問");
   const [transcript, setTranscript] = useState("");
@@ -32,18 +36,20 @@ export default function Persona() {
   const [saveState, setSaveState] = useState("idle");
   const [saveMsg, setSaveMsg] = useState("");
 
-  // 一覧
+  // 一覧（このクライアントのぶんだけ）
   const [listLoading, setListLoading] = useState(false);
-  const [listData, setListData] = useState([]);
+  const [clientNode, setClientNode] = useState(null);
   const [listError, setListError] = useState("");
   const [expandedId, setExpandedId] = useState("");
-  const [openClients, setOpenClients] = useState({});
 
   const canGenerate = transcript.trim().length > 20 && !loading;
 
-  useEffect(function () {
-    loadList();
-  }, []);
+  useEffect(
+    function () {
+      loadList();
+    },
+    [clientId]
+  );
 
   async function generate() {
     setLoading(true);
@@ -90,7 +96,7 @@ export default function Persona() {
     if (!persona) return;
     if (!clientName.trim() || !position.trim()) {
       setSaveState("error");
-      setSaveMsg("保存にはクライアント名とポジションが必要です。");
+      setSaveMsg("保存にはポジションが必要です。");
       return;
     }
     setSaveState("saving");
@@ -122,6 +128,7 @@ export default function Persona() {
     }
   }
 
+  // 全クライアントのツリーを取り、このクライアント（id一致）のノードだけ取り出す
   async function loadList() {
     setListLoading(true);
     setListError("");
@@ -130,10 +137,18 @@ export default function Persona() {
       const data = await res.json();
       if (data.error) {
         setListError(data.error);
-        setListData([]);
+        setClientNode(null);
         return;
       }
-      setListData(data.clients || []);
+      const all = data.clients || [];
+      let node = null;
+      for (let i = 0; i < all.length; i++) {
+        if (all[i].id === clientId) {
+          node = all[i];
+          break;
+        }
+      }
+      setClientNode(node);
     } catch (e) {
       setListError("一覧の取得に失敗しました。");
     } finally {
@@ -157,14 +172,6 @@ export default function Persona() {
     } catch (e) {
       window.alert("削除に失敗しました。");
     }
-  }
-
-  function toggleClient(id) {
-    setOpenClients(function (prev) {
-      const next = Object.assign({}, prev);
-      next[id] = !next[id];
-      return next;
-    });
   }
 
   function asList(arr, indent) {
@@ -225,6 +232,16 @@ export default function Persona() {
     });
   }
 
+  // このクライアントのペルソナ総数
+  let personaCount = 0;
+  if (clientNode) {
+    (clientNode.positions || []).forEach((pos) => {
+      (pos.conditions || []).forEach((cond) => {
+        personaCount = personaCount + (cond.personas ? cond.personas.length : 0);
+      });
+    });
+  }
+
   return (
     <div>
       {/* 生成フォーム */}
@@ -237,13 +254,21 @@ export default function Persona() {
         }}
       >
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          <Field label="クライアント名">
-            <input
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              placeholder="例：株式会社Hatch Promotion"
-              style={inputStyle}
-            />
+          <Field label="クライアント">
+            <div
+              style={{
+                border: "1px solid " + COLORS.line,
+                borderRadius: 8,
+                padding: "10px 12px",
+                fontSize: 14,
+                color: COLORS.ink,
+                background: COLORS.bg,
+                fontFamily: FONT,
+                fontWeight: 700,
+              }}
+            >
+              {clientName || "（クライアント未選択）"}
+            </div>
           </Field>
           <Field label="ポジション">
             <input
@@ -447,7 +472,7 @@ export default function Persona() {
         </div>
       ) : null}
 
-      {/* 保存済み一覧 */}
+      {/* このクライアントの保存済み一覧 */}
       <div style={{ marginTop: 40 }}>
         <div
           style={{
@@ -458,7 +483,7 @@ export default function Persona() {
           }}
         >
           <div style={{ fontSize: 13, color: COLORS.inkSoft }}>
-            保存したペルソナをクライアント別に表示します。
+            {clientName}の保存済みペルソナ（{personaCount}件）
           </div>
           <SmallBtn onClick={loadList}>{listLoading ? "読込中…" : "再読み込み"}</SmallBtn>
         </div>
@@ -479,7 +504,7 @@ export default function Persona() {
           </div>
         ) : null}
 
-        {!listLoading && listData.length === 0 && !listError ? (
+        {!listLoading && personaCount === 0 && !listError ? (
           <div
             style={{
               padding: "40px 20px",
@@ -491,188 +516,143 @@ export default function Persona() {
               fontSize: 14,
             }}
           >
-            まだ保存されたペルソナはありません。上のフォームで作って保存してください。
+            このクライアントのペルソナはまだありません。上のフォームで作って保存してください。
           </div>
         ) : null}
 
-        {listData.map((client) => {
-          let personaCount = 0;
-          (client.positions || []).forEach((pos) => {
-            (pos.conditions || []).forEach((cond) => {
-              personaCount = personaCount + (cond.personas ? cond.personas.length : 0);
-            });
-          });
-          const clientOpen = !!openClients[client.id];
-          return (
-            <div
-              key={client.id}
-              style={{
-                marginBottom: 20,
-                background: COLORS.paper,
-                border: "1px solid " + COLORS.line,
-                borderRadius: 14,
-                padding: "16px 20px",
-              }}
-            >
+        {clientNode
+          ? (clientNode.positions || []).map((pos) => (
               <div
-                onClick={() => toggleClient(client.id)}
+                key={pos.id}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  cursor: "pointer",
+                  marginBottom: 16,
+                  background: COLORS.paper,
+                  border: "1px solid " + COLORS.line,
+                  borderRadius: 14,
+                  padding: "16px 20px",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 13, color: COLORS.greyblue }}>
-                    {clientOpen ? "▼" : "▶"}
-                  </span>
-                  <span style={{ fontSize: 17, fontWeight: 800 }}>{client.name}</span>
+                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.inkSoft }}>
+                  {pos.name}
                 </div>
-                <span
-                  style={{
-                    fontSize: 12,
-                    color: COLORS.inkSoft,
-                    background: COLORS.bg,
-                    border: "1px solid " + COLORS.line,
-                    borderRadius: 999,
-                    padding: "3px 12px",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  ペルソナ {personaCount}件
-                </span>
-              </div>
 
-              {clientOpen
-                ? (client.positions || []).map((pos) => (
-                    <div key={pos.id} style={{ marginTop: 14, paddingLeft: 4 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.inkSoft }}>
-                        {pos.name}
+                {(pos.conditions || []).map((cond) => {
+                  const personas = (cond.personas || [])
+                    .slice()
+                    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+                  return (
+                    <div key={cond.id} style={{ marginTop: 8, paddingLeft: 12 }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: COLORS.greyblue,
+                          fontWeight: 700,
+                          marginBottom: 6,
+                        }}
+                      >
+                        {cond.experience}
                       </div>
 
-                      {(pos.conditions || []).map((cond) => {
-                        const personas = (cond.personas || [])
-                          .slice()
-                          .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+                      {personas.map((p) => {
+                        const open = expandedId === p.id;
+                        const d = p.created_at ? new Date(p.created_at) : null;
+                        const pad = (n) => (n < 10 ? "0" + n : "" + n);
+                        const dateStr = d
+                          ? d.getFullYear() +
+                            "/" +
+                            pad(d.getMonth() + 1) +
+                            "/" +
+                            pad(d.getDate()) +
+                            " " +
+                            pad(d.getHours()) +
+                            ":" +
+                            pad(d.getMinutes())
+                          : "";
                         return (
-                          <div key={cond.id} style={{ marginTop: 8, paddingLeft: 12 }}>
+                          <div
+                            key={p.id}
+                            style={{
+                              border: "1px solid " + COLORS.line,
+                              borderRadius: 10,
+                              marginBottom: 8,
+                              overflow: "hidden",
+                            }}
+                          >
                             <div
                               style={{
-                                fontSize: 12,
-                                color: COLORS.greyblue,
-                                fontWeight: 700,
-                                marginBottom: 6,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 10,
+                                padding: "10px 14px",
+                                background: open ? "#F4F1EC" : COLORS.paper,
                               }}
                             >
-                              {cond.experience}
-                            </div>
-
-                            {personas.map((p) => {
-                              const open = expandedId === p.id;
-                              const d = p.created_at ? new Date(p.created_at) : null;
-                              const pad = (n) => (n < 10 ? "0" + n : "" + n);
-                              const dateStr = d
-                                ? d.getFullYear() +
-                                  "/" +
-                                  pad(d.getMonth() + 1) +
-                                  "/" +
-                                  pad(d.getDate()) +
-                                  " " +
-                                  pad(d.getHours()) +
-                                  ":" +
-                                  pad(d.getMinutes())
-                                : "";
-                              return (
-                                <div
-                                  key={p.id}
-                                  style={{
-                                    border: "1px solid " + COLORS.line,
-                                    borderRadius: 10,
-                                    marginBottom: 8,
-                                    overflow: "hidden",
-                                  }}
-                                >
-                                  <div
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                {p.is_current ? (
+                                  <span
                                     style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "space-between",
-                                      gap: 10,
-                                      padding: "10px 14px",
-                                      background: open ? "#F4F1EC" : COLORS.paper,
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      color: COLORS.paper,
+                                      background: COLORS.ink,
+                                      borderRadius: 999,
+                                      padding: "2px 8px",
                                     }}
                                   >
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 8,
-                                        flexWrap: "wrap",
-                                      }}
-                                    >
-                                      {p.is_current ? (
-                                        <span
-                                          style={{
-                                            fontSize: 11,
-                                            fontWeight: 700,
-                                            color: COLORS.paper,
-                                            background: COLORS.ink,
-                                            borderRadius: 999,
-                                            padding: "2px 8px",
-                                          }}
-                                        >
-                                          現行
-                                        </span>
-                                      ) : null}
-                                      <span
-                                        style={{ fontSize: 14, fontWeight: 700, color: COLORS.ink }}
-                                      >
-                                        {dateStr}
-                                      </span>
-                                      <span style={{ fontSize: 13, color: COLORS.inkSoft }}>
-                                        {p.label || "（ラベルなし）"}
-                                      </span>
-                                    </div>
-                                    <div style={{ display: "flex", gap: 6 }}>
-                                      <SmallBtn onClick={() => setExpandedId(open ? "" : p.id)}>
-                                        {open ? "閉じる" : "開く"}
-                                      </SmallBtn>
-                                      <button
-                                        onClick={() => deletePersona(p.id)}
-                                        style={{
-                                          background: COLORS.paper,
-                                          border: "1px solid #E9C9BF",
-                                          color: "#8A3A22",
-                                          borderRadius: 8,
-                                          padding: "8px 12px",
-                                          fontSize: 13,
-                                          fontWeight: 600,
-                                          cursor: "pointer",
-                                          fontFamily: FONT,
-                                        }}
-                                      >
-                                        削除
-                                      </button>
-                                    </div>
-                                  </div>
-                                  {open ? (
-                                    <div style={{ padding: "8px 18px 18px" }}>
-                                      <PersonaBody persona={p.data} />
-                                    </div>
-                                  ) : null}
-                                </div>
-                              );
-                            })}
+                                    現行
+                                  </span>
+                                ) : null}
+                                <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.ink }}>
+                                  {dateStr}
+                                </span>
+                                <span style={{ fontSize: 13, color: COLORS.inkSoft }}>
+                                  {p.label || "（ラベルなし）"}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <SmallBtn onClick={() => setExpandedId(open ? "" : p.id)}>
+                                  {open ? "閉じる" : "開く"}
+                                </SmallBtn>
+                                <button
+                                  onClick={() => deletePersona(p.id)}
+                                  style={{
+                                    background: COLORS.paper,
+                                    border: "1px solid #E9C9BF",
+                                    color: "#8A3A22",
+                                    borderRadius: 8,
+                                    padding: "8px 12px",
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    fontFamily: FONT,
+                                  }}
+                                >
+                                  削除
+                                </button>
+                              </div>
+                            </div>
+                            {open ? (
+                              <div style={{ padding: "8px 18px 18px" }}>
+                                <PersonaBody persona={p.data} />
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })}
                     </div>
-                  ))
-                : null}
-            </div>
-          );
-        })}
+                  );
+                })}
+              </div>
+            ))
+          : null}
       </div>
     </div>
   );
