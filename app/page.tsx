@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import JobAds from "./JobAds";
 import Numbers from "./Numbers";
 import Postings from "./Postings";
+import Persona from "./Persona";
 
 const COLORS = {
   ink: "#121212",
@@ -407,7 +408,7 @@ function ClientDetail(props: any) {
       </div>
 
       {tab === "overview" ? <Overview client={client} /> : null}
-      {tab === "persona" ? <Placeholder label="ペルソナ" /> : null}
+      {tab === "persona" ? <Persona /> : null}
       {tab === "jobad" ? <JobAds /> : null}
       {tab === "posting" ? <Postings /> : null}
       {tab === "numbers" ? <Numbers /> : null}
