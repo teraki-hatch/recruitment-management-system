@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import Home from "./Home";
+import { useState, useEffect } from "react";
 import JobAds from "./JobAds";
 import Numbers from "./Numbers";
 import Postings from "./Postings";
@@ -19,556 +18,305 @@ const COLORS = {
 const FONT =
   '"Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif';
 
-const EXPERIENCE = ["経験者", "未経験", "不問"];
+const TABS = [
+  { key: "overview", label: "概要" },
+  { key: "persona", label: "ペルソナ" },
+  { key: "jobad", label: "求人票" },
+  { key: "posting", label: "掲載求人" },
+  { key: "numbers", label: "数値管理" },
+];
 
 export default function Page() {
-  const [view, setView] = useState("home");
+  // screen: "list"（クライアント一覧） or "detail"（クライアントページ）
+  const [screen, setScreen] = useState("list");
+  const [activeClient, setActiveClient] = useState(null);
+  const [tab, setTab] = useState("overview");
 
-  // ホームのクライアントカードから掲載求人へ遷移する際の絞り込み対象
-  const [selectedClient, setSelectedClient] = useState(null);
-
-  const [clientName, setClientName] = useState("");
-  const [position, setPosition] = useState("");
-  const [experience, setExperience] = useState("不問");
-  const [transcript, setTranscript] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [persona, setPersona] = useState(null);
-  const [raw, setRaw] = useState("");
-  const [error, setError] = useState("");
-  const [copied, setCopied] = useState("");
-  const [showJson, setShowJson] = useState(false);
-
-  const [saveState, setSaveState] = useState("idle");
-  const [saveMsg, setSaveMsg] = useState("");
-
-  const [listLoading, setListLoading] = useState(false);
-  const [listData, setListData] = useState([]);
-  const [listError, setListError] = useState("");
-  const [expandedId, setExpandedId] = useState("");
-  const [openClients, setOpenClients] = useState({});
-
-  const canGenerate = transcript.trim().length > 20 && !loading;
-
-  async function generate() {
-    setLoading(true);
-    setError("");
-    setPersona(null);
-    setRaw("");
-    setSaveState("idle");
-    setSaveMsg("");
-    try {
-      const res = await fetch("/api/persona", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientName: clientName,
-          position: position,
-          experience: experience,
-          transcript: transcript.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setError(data.error);
-        if (data.raw) {
-          setRaw(data.raw);
-          setShowJson(true);
-        }
-        return;
-      }
-      setRaw(data.raw || "");
-      if (data.persona) {
-        setPersona(data.persona);
-      } else {
-        setError("JSONの解析に失敗しました。下の「生出力」を確認してください。");
-        setShowJson(true);
-      }
-    } catch (e) {
-      setError("生成に失敗しました。通信状況を確認してもう一度お試しください。");
-    } finally {
-      setLoading(false);
-    }
+  function openClient(c) {
+    setActiveClient(c || null);
+    setTab("overview");
+    setScreen("detail");
   }
 
-  async function savePersona() {
-    if (!persona) return;
-    if (!clientName.trim() || !position.trim()) {
-      setSaveState("error");
-      setSaveMsg("保存にはクライアント名とポジションが必要です。");
-      return;
-    }
-    setSaveState("saving");
-    setSaveMsg("");
-    try {
-      const res = await fetch("/api/personas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientName: clientName,
-          position: position,
-          experience: experience,
-          persona: persona,
-          transcript: transcript,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setSaveState("error");
-        setSaveMsg(data.error);
-        return;
-      }
-      setSaveState("saved");
-      setSaveMsg("保存しました。");
-    } catch (e) {
-      setSaveState("error");
-      setSaveMsg("保存に失敗しました。");
-    }
-  }
-
-  async function loadList() {
-    setListLoading(true);
-    setListError("");
-    try {
-      const res = await fetch("/api/personas", { method: "GET" });
-      const data = await res.json();
-      if (data.error) {
-        setListError(data.error);
-        setListData([]);
-        return;
-      }
-      setListData(data.clients || []);
-    } catch (e) {
-      setListError("一覧の取得に失敗しました。");
-    } finally {
-      setListLoading(false);
-    }
-  }
-
-  async function deletePersona(id) {
-    const ok = window.confirm("このペルソナを削除しますか？（元に戻せません）");
-    if (!ok) return;
-    try {
-      const res = await fetch("/api/personas?id=" + encodeURIComponent(id), {
-        method: "DELETE",
-      });
-      const data = await res.json();
-      if (data.error) {
-        window.alert(data.error);
-        return;
-      }
-      loadList();
-    } catch (e) {
-      window.alert("削除に失敗しました。");
-    }
-  }
-
-  function switchView(v) {
-    // 掲載求人以外へ移動したら、クライアント絞り込みは解除する
-    if (v !== "posting") {
-      setSelectedClient(null);
-    }
-    setView(v);
-    if (v === "list") loadList();
-  }
-
-  // ホームのクライアントカードから、そのクライアントで絞り込んだ掲載求人へ
-  function goPostingWithClient(client) {
-    setSelectedClient(client || null);
-    setView("posting");
-  }
-
-  function toggleClient(id) {
-    setOpenClients(function (prev) {
-      const next = Object.assign({}, prev);
-      next[id] = !next[id];
-      return next;
-    });
-  }
-
-  function asList(arr, indent) {
-    const pad = indent || "  ";
-    if (!Array.isArray(arr) || arr.length === 0) return pad + "-";
-    return arr.map((x) => pad + "・" + x).join("\n");
-  }
-  function flat(arr) {
-    if (!Array.isArray(arr) || arr.length === 0) return "-";
-    return arr.join(" / ");
-  }
-
-  function personaToText(p) {
-    if (!p) return "";
-    const lines = [];
-    lines.push("■ クライアント: " + (clientName || "-"));
-    lines.push("■ ポジション: " + (position || "-") + " / 雇用条件: " + experience);
-    lines.push("");
-    lines.push("【ペルソナ】" + (p["ラベル"] || ""));
-    lines.push("");
-    lines.push("● 基本属性\n" + (p["基本属性"] || ""));
-    lines.push("● 現状\n" + (p["現状"] || ""));
-    lines.push("● 転職動機（顕在）\n" + (p["転職動機_顕在"] || ""));
-    lines.push("● 転職動機（潜在）\n" + (p["転職動機_潜在"] || ""));
-    lines.push("● 重視する条件\n" + asList(p["重視する条件"]));
-    lines.push("● 不安・障壁\n" + asList(p["不安_障壁"]));
-    lines.push("● 意思決定の軸\n" + (p["意思決定の軸"] || ""));
-    lines.push("● 情報接触\n" + (p["情報接触"] || ""));
-    const t = p["訴求の方向性"] || {};
-    lines.push("● 訴求の方向性");
-    lines.push("  - 刺さる軸: " + flat(t["刺さる軸"]));
-    lines.push("  - キーメッセージ案:\n" + asList(t["キーメッセージ案"], "    "));
-    lines.push("  - NG訴求: " + flat(t["NG訴求"]));
-    return lines.join("\n");
-  }
-
-  function copy(kind) {
-    let payload = "";
-    if (kind === "json") {
-      payload = JSON.stringify(
-        {
-          クライアント: clientName,
-          ポジション: position,
-          雇用条件: experience,
-          ペルソナ: persona,
-        },
-        null,
-        2
-      );
-    } else {
-      payload = personaToText(persona);
-    }
-    navigator.clipboard.writeText(payload).then(function () {
-      setCopied(kind);
-      setTimeout(function () {
-        setCopied("");
-      }, 1600);
-    });
+  function backToList() {
+    setScreen("list");
+    setActiveClient(null);
   }
 
   return (
     <div
       style={{
-        display: "flex",
         minHeight: "100vh",
         background: COLORS.bg,
         fontFamily: FONT,
         color: COLORS.ink,
       }}
     >
-      <Sidebar view={view} onNavigate={switchView} />
-      <main style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ maxWidth: 980, margin: "0 auto", padding: "32px 28px 80px" }}>
-          <SectionTitle view={view} />
+      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "32px 28px 80px" }}>
+        <TopBar />
 
-          {view === "home" ? (
-            <Home onNavigate={switchView} onOpenClient={goPostingWithClient} />
-          ) : null}
+        {screen === "list" ? (
+          <ClientList onOpenClient={openClient} />
+        ) : (
+          <ClientDetail
+            client={activeClient}
+            tab={tab}
+            onTab={setTab}
+            onBack={backToList}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
 
-          {view === "generate" ? (
-          <div>
-            <div
+function TopBar() {
+  return (
+    <div style={{ marginBottom: 26 }}>
+      <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.greyblue, fontWeight: 700 }}>
+        HATCH PROMOTION RMS
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4, letterSpacing: 1 }}>
+        ハチプロ RMS
+      </div>
+    </div>
+  );
+}
+
+// ===== クライアント一覧（トップ） =====
+function ClientList(props: any) {
+  const onOpenClient = props.onOpenClient || function () {};
+  const [clients, setClients] = useState([]);
+  const [postingCount, setPostingCount] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  // 新規クライアント追加
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [addState, setAddState] = useState("idle");
+  const [addMsg, setAddMsg] = useState("");
+
+  useEffect(function () {
+    load();
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const cRes = await fetch("/api/clients", { method: "GET" });
+      const cData = await cRes.json();
+      setClients(cData.clients || []);
+
+      const pRes = await fetch("/api/postings", { method: "GET" });
+      const pData = await pRes.json();
+      const postings = pData.postings || [];
+      const counts = {};
+      postings.forEach(function (p) {
+        const pos = p.positions;
+        const cl = pos ? pos.clients : null;
+        const cid = cl ? cl.id : "";
+        if (!cid) return;
+        counts[cid] = (counts[cid] || 0) + 1;
+      });
+      setPostingCount(counts);
+    } catch (e) {
+      // 取得失敗時は空表示
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function addClient() {
+    const name = (newName || "").trim();
+    if (!name) {
+      setAddState("error");
+      setAddMsg("クライアント名を入力してください。");
+      return;
+    }
+    setAddState("saving");
+    setAddMsg("");
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setAddState("error");
+        setAddMsg(data.error);
+        return;
+      }
+      setAddState("idle");
+      setAddMsg(data.existed ? "同名のクライアントが既にあります。" : "");
+      setNewName("");
+      setShowAdd(false);
+      load();
+    } catch (e) {
+      setAddState("error");
+      setAddMsg("登録に失敗しました。");
+    }
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ fontSize: 13, color: COLORS.inkSoft }}>
+          クライアントを選ぶと、そのクライアントのペルソナ・求人票・掲載求人・数値をまとめて管理できます。
+        </div>
+        <button
+          onClick={function () {
+            setShowAdd(function (v) {
+              return !v;
+            });
+            setAddMsg("");
+          }}
+          style={{
+            background: showAdd ? COLORS.ink : COLORS.paper,
+            color: showAdd ? COLORS.paper : COLORS.ink,
+            border: "1px solid " + (showAdd ? COLORS.ink : COLORS.line),
+            borderRadius: 8,
+            padding: "9px 16px",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: FONT,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {showAdd ? "閉じる" : "＋クライアント追加"}
+        </button>
+      </div>
+
+      {showAdd ? (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: "18px 20px",
+            background: COLORS.paper,
+            border: "1px solid " + COLORS.line,
+            borderRadius: 14,
+          }}
+        >
+          <label style={{ fontSize: 12, fontWeight: 700, color: COLORS.inkSoft }}>
+            クライアント名
+          </label>
+          <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+            <input
+              value={newName}
+              onChange={function (e) {
+                setNewName(e.target.value);
+              }}
+              placeholder="例：株式会社カイゼン・マーケティング"
               style={{
-                background: COLORS.paper,
                 border: "1px solid " + COLORS.line,
-                borderRadius: 14,
-                padding: 20,
+                borderRadius: 8,
+                padding: "10px 12px",
+                fontSize: 14,
+                color: COLORS.ink,
+                outline: "none",
+                background: COLORS.paper,
+                fontFamily: FONT,
+                flex: "1 1 260px",
+                minWidth: 200,
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              onClick={addClient}
+              disabled={addState === "saving"}
+              style={{
+                background: COLORS.ink,
+                color: COLORS.paper,
+                border: "none",
+                borderRadius: 10,
+                padding: "11px 22px",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: addState === "saving" ? "default" : "pointer",
+                fontFamily: FONT,
+                whiteSpace: "nowrap",
               }}
             >
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                <Field label="クライアント名">
-                  <input
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    placeholder="例：株式会社Hatch Promotion"
-                    style={inputStyle}
-                  />
-                </Field>
-                <Field label="ポジション">
-                  <input
-                    value={position}
-                    onChange={(e) => setPosition(e.target.value)}
-                    placeholder="例：施工管理"
-                    style={inputStyle}
-                  />
-                </Field>
-                <Field label="雇用条件" grow={false}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {EXPERIENCE.map((x) => (
-                      <button
-                        key={x}
-                        onClick={() => setExperience(x)}
-                        style={{
-                          ...chipStyle,
-                          background: experience === x ? COLORS.ink : COLORS.paper,
-                          color: experience === x ? COLORS.paper : COLORS.inkSoft,
-                          borderColor: experience === x ? COLORS.ink : COLORS.line,
-                        }}
-                      >
-                        {x}
-                      </button>
-                    ))}
-                  </div>
-                </Field>
-              </div>
-
-              <div style={{ marginTop: 16 }}>
-                <label style={labelStyle}>tl;dv議事録</label>
-                <textarea
-                  value={transcript}
-                  onChange={(e) => setTranscript(e.target.value)}
-                  placeholder="tl;dvの文字起こし／議事録をそのまま貼り付けてください。"
-                  rows={10}
-                  style={{
-                    ...inputStyle,
-                    width: "100%",
-                    resize: "vertical",
-                    lineHeight: 1.7,
-                    fontFamily: FONT,
-                    marginTop: 6,
-                  }}
-                />
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 16 }}>
-                <button
-                  onClick={generate}
-                  disabled={!canGenerate}
-                  style={{
-                    background: canGenerate ? COLORS.ink : COLORS.greyblue,
-                    color: COLORS.paper,
-                    border: "none",
-                    borderRadius: 10,
-                    padding: "13px 26px",
-                    fontSize: 15,
-                    fontWeight: 700,
-                    cursor: canGenerate ? "pointer" : "not-allowed",
-                    fontFamily: FONT,
-                  }}
-                >
-                  {loading ? "生成中…" : "ペルソナを生成"}
-                </button>
-                {transcript.trim().length > 0 && transcript.trim().length <= 20 ? (
-                  <span style={{ fontSize: 12, color: COLORS.greyblue }}>
-                    議事録をもう少し貼ってください
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            {error ? (
-              <div
-                style={{
-                  marginTop: 18,
-                  padding: "14px 16px",
-                  borderRadius: 10,
-                  background: "#FBEDE9",
-                  border: "1px solid #E9C9BF",
-                  color: "#8A3A22",
-                  fontSize: 14,
-                }}
-              >
-                {error}
-              </div>
-            ) : null}
-
-            {persona ? (
-              <div style={{ marginTop: 28 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 10,
-                    marginBottom: 14,
-                  }}
-                >
-                  <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>生成されたペルソナ</h2>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <SmallBtn onClick={() => copy("text")} active={copied === "text"}>
-                      {copied === "text" ? "コピーしました" : "テキストでコピー"}
-                    </SmallBtn>
-                    <SmallBtn onClick={() => copy("json")} active={copied === "json"}>
-                      {copied === "json" ? "コピーしました" : "JSONをコピー"}
-                    </SmallBtn>
-                    <button
-                      onClick={savePersona}
-                      disabled={saveState === "saving" || saveState === "saved"}
-                      style={{
-                        background: saveState === "saved" ? COLORS.greyblue : COLORS.ink,
-                        color: COLORS.paper,
-                        border: "none",
-                        borderRadius: 8,
-                        padding: "8px 16px",
-                        fontSize: 13,
-                        fontWeight: 700,
-                        cursor:
-                          saveState === "saving" || saveState === "saved"
-                            ? "default"
-                            : "pointer",
-                        fontFamily: FONT,
-                      }}
-                    >
-                      {saveState === "saving"
-                        ? "保存中…"
-                        : saveState === "saved"
-                        ? "保存済み ✓"
-                        : "このペルソナを保存"}
-                    </button>
-                  </div>
-                </div>
-
-                {saveMsg ? (
-                  <div
-                    style={{
-                      marginBottom: 12,
-                      fontSize: 13,
-                      color: saveState === "error" ? "#8A3A22" : COLORS.inkSoft,
-                    }}
-                  >
-                    {saveMsg}
-                  </div>
-                ) : null}
-
-                <div
-                  style={{
-                    background: COLORS.paper,
-                    border: "1px solid " + COLORS.line,
-                    borderRadius: 14,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ background: COLORS.ink, color: COLORS.paper, padding: "16px 22px" }}>
-                    <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.sand }}>PERSONA</div>
-                    <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>
-                      {persona["ラベル"] || "（ラベルなし）"}
-                    </div>
-                    <div style={{ fontSize: 12, color: COLORS.greyblue, marginTop: 4 }}>
-                      {(clientName || "—") + " ／ " + (position || "—") + " ／ " + experience}
-                    </div>
-                  </div>
-                  <div style={{ padding: "8px 22px 22px" }}>
-                    <PersonaBody persona={persona} />
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setShowJson(!showJson)}
-                  style={{
-                    marginTop: 12,
-                    background: "none",
-                    border: "none",
-                    color: COLORS.greyblue,
-                    fontSize: 12,
-                    cursor: "pointer",
-                    fontFamily: FONT,
-                    padding: 0,
-                  }}
-                >
-                  {showJson ? "生出力を隠す ▲" : "生出力（JSON）を表示 ▼"}
-                </button>
-                {showJson ? (
-                  <pre
-                    style={{
-                      marginTop: 8,
-                      background: COLORS.ink,
-                      color: "#E8E8E8",
-                      padding: 16,
-                      borderRadius: 10,
-                      fontSize: 12,
-                      overflowX: "auto",
-                      lineHeight: 1.6,
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {raw}
-                  </pre>
-                ) : null}
-              </div>
-            ) : null}
+              {addState === "saving" ? "登録中…" : "登録する"}
+            </button>
           </div>
-        ) : null}
-
-        {view === "list" ? (
-          <div>
+          {addMsg ? (
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 16,
+                fontSize: 12,
+                color: addState === "error" ? "#8A3A22" : COLORS.inkSoft,
+                marginTop: 8,
               }}
             >
-              <div style={{ fontSize: 13, color: COLORS.inkSoft }}>
-                保存したペルソナをクライアント別に表示します。
-              </div>
-              <SmallBtn onClick={loadList}>{listLoading ? "読込中…" : "再読み込み"}</SmallBtn>
+              {addMsg}
             </div>
+          ) : null}
+        </div>
+      ) : null}
 
-            {listError ? (
+      {loading ? (
+        <div style={{ fontSize: 13, color: COLORS.greyblue }}>読み込み中…</div>
+      ) : clients.length === 0 ? (
+        <div
+          style={{
+            padding: "40px 20px",
+            textAlign: "center",
+            color: COLORS.greyblue,
+            background: COLORS.paper,
+            border: "1px dashed " + COLORS.line,
+            borderRadius: 14,
+            fontSize: 14,
+          }}
+        >
+          登録済みのクライアントがありません。「＋クライアント追加」から登録してください。
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+            gap: 16,
+          }}
+        >
+          {clients.map(function (c) {
+            const cnt = postingCount[c.id] || 0;
+            return (
               <div
-                style={{
-                  marginBottom: 16,
-                  padding: "14px 16px",
-                  borderRadius: 10,
-                  background: "#FBEDE9",
-                  border: "1px solid #E9C9BF",
-                  color: "#8A3A22",
-                  fontSize: 14,
+                key={c.id}
+                onClick={function () {
+                  onOpenClient({ id: c.id, name: c.name });
                 }}
-              >
-                {listError}
-              </div>
-            ) : null}
-
-            {!listLoading && listData.length === 0 && !listError ? (
-              <div
                 style={{
-                  padding: "40px 20px",
-                  textAlign: "center",
-                  color: COLORS.greyblue,
-                  background: COLORS.paper,
-                  border: "1px dashed " + COLORS.line,
-                  borderRadius: 14,
-                  fontSize: 14,
-                }}
-              >
-                まだ保存されたペルソナはありません。左メニュー「ペルソナ生成」で作って保存してください。
-              </div>
-            ) : null}
-
-            {listData.map((client) => {
-              let personaCount = 0;
-              (client.positions || []).forEach((pos) => {
-                (pos.conditions || []).forEach((cond) => {
-                  personaCount = personaCount + (cond.personas ? cond.personas.length : 0);
-                });
-              });
-              const clientOpen = !!openClients[client.id];
-              return (
-              <div
-                key={client.id}
-                style={{
-                  marginBottom: 20,
                   background: COLORS.paper,
                   border: "1px solid " + COLORS.line,
                   borderRadius: 14,
-                  padding: "16px 20px",
+                  padding: "20px 22px",
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  minHeight: 116,
                 }}
               >
+                <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.ink, lineHeight: 1.4 }}>
+                  {c.name}
+                </div>
                 <div
-                  onClick={() => toggleClient(client.id)}
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    cursor: "pointer",
+                    marginTop: 16,
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 13, color: COLORS.greyblue }}>
-                      {clientOpen ? "▼" : "▶"}
-                    </span>
-                    <span style={{ fontSize: 17, fontWeight: 800 }}>{client.name}</span>
-                  </div>
                   <span
                     style={{
                       fontSize: 12,
@@ -580,471 +328,127 @@ export default function Page() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    ペルソナ {personaCount}件
+                    掲載求人 {cnt}件
                   </span>
+                  <span style={{ fontSize: 12, color: COLORS.greyblue }}>開く →</span>
                 </div>
-
-                {clientOpen
-                  ? (client.positions || []).map((pos) => (
-                  <div key={pos.id} style={{ marginTop: 14, paddingLeft: 4 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.inkSoft }}>
-                      {pos.name}
-                    </div>
-
-                    {(pos.conditions || []).map((cond) => {
-                      const personas = (cond.personas || [])
-                        .slice()
-                        .sort((a, b) =>
-                          a.created_at < b.created_at ? 1 : -1
-                        );
-                      return (
-                        <div key={cond.id} style={{ marginTop: 8, paddingLeft: 12 }}>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: COLORS.greyblue,
-                              fontWeight: 700,
-                              marginBottom: 6,
-                            }}
-                          >
-                            {cond.experience}
-                          </div>
-
-                          {personas.map((p) => {
-                            const open = expandedId === p.id;
-                            const d = p.created_at ? new Date(p.created_at) : null;
-                            const pad = (n) => (n < 10 ? "0" + n : "" + n);
-                            const dateStr = d
-                              ? d.getFullYear() +
-                                "/" +
-                                pad(d.getMonth() + 1) +
-                                "/" +
-                                pad(d.getDate()) +
-                                " " +
-                                pad(d.getHours()) +
-                                ":" +
-                                pad(d.getMinutes())
-                              : "";
-                            return (
-                              <div
-                                key={p.id}
-                                style={{
-                                  border: "1px solid " + COLORS.line,
-                                  borderRadius: 10,
-                                  marginBottom: 8,
-                                  overflow: "hidden",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    gap: 10,
-                                    padding: "10px 14px",
-                                    background: open ? "#F4F1EC" : COLORS.paper,
-                                  }}
-                                >
-                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                    {p.is_current ? (
-                                      <span
-                                        style={{
-                                          fontSize: 11,
-                                          fontWeight: 700,
-                                          color: COLORS.paper,
-                                          background: COLORS.ink,
-                                          borderRadius: 999,
-                                          padding: "2px 8px",
-                                        }}
-                                      >
-                                        現行
-                                      </span>
-                                    ) : null}
-                                    <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.ink }}>
-                                      {dateStr}
-                                    </span>
-                                    <span style={{ fontSize: 13, color: COLORS.inkSoft }}>
-                                      {p.label || "（ラベルなし）"}
-                                    </span>
-                                  </div>
-                                  <div style={{ display: "flex", gap: 6 }}>
-                                    <SmallBtn onClick={() => setExpandedId(open ? "" : p.id)}>
-                                      {open ? "閉じる" : "開く"}
-                                    </SmallBtn>
-                                    <button
-                                      onClick={() => deletePersona(p.id)}
-                                      style={{
-                                        background: COLORS.paper,
-                                        border: "1px solid #E9C9BF",
-                                        color: "#8A3A22",
-                                        borderRadius: 8,
-                                        padding: "8px 12px",
-                                        fontSize: 13,
-                                        fontWeight: 600,
-                                        cursor: "pointer",
-                                        fontFamily: FONT,
-                                      }}
-                                    >
-                                      削除
-                                    </button>
-                                  </div>
-                                </div>
-                                {open ? (
-                                  <div style={{ padding: "8px 18px 18px" }}>
-                                    <PersonaBody persona={p.data} />
-                                  </div>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  ))
-                  : null}
               </div>
-              );
-            })}
-          </div>
-        ) : null}
-
-          {view === "jobad" ? <JobAds /> : null}
-
-          {view === "posting" ? (
-            <Postings
-              filterClient={selectedClient}
-              onClearFilter={() => setSelectedClient(null)}
-            />
-          ) : null}
-
-          {view === "numbers" ? <Numbers /> : null}
+            );
+          })}
         </div>
-      </main>
+      )}
     </div>
   );
 }
 
-const inputStyle = {
-  border: "1px solid " + COLORS.line,
-  borderRadius: 8,
-  padding: "10px 12px",
-  fontSize: 14,
-  color: COLORS.ink,
-  outline: "none",
-  background: COLORS.paper,
-  fontFamily: FONT,
-  width: "100%",
-  boxSizing: "border-box" as const,
-};
-const labelStyle = {
-  fontSize: 12,
-  fontWeight: 700,
-  color: COLORS.inkSoft,
-  display: "block",
-};
-const chipStyle = {
-  border: "1px solid " + COLORS.line,
-  borderRadius: 999,
-  padding: "9px 14px",
-  fontSize: 13,
-  cursor: "pointer",
-  fontFamily: FONT,
-  fontWeight: 600,
-};
+// ===== クライアントページ（詳細・タブ） =====
+function ClientDetail(props: any) {
+  const client = props.client || {};
+  const tab = props.tab;
+  const onTab = props.onTab || function () {};
+  const onBack = props.onBack || function () {};
 
-function SectionTitle(props: any) {
-  const titles: any = {
-    home: "ホーム",
-    generate: "ペルソナ生成",
-    list: "ペルソナ一覧",
-    jobad: "求人票",
-    posting: "掲載求人",
-    numbers: "数値管理",
-  };
   return (
-    <div style={{ marginBottom: 22 }}>
-      <div style={{ fontSize: 11, letterSpacing: 2, color: COLORS.greyblue, fontWeight: 700 }}>
-        HATCH PROMOTION RMS
-      </div>
-      <h1 style={{ fontSize: 26, fontWeight: 800, margin: "6px 0 0", lineHeight: 1.25 }}>
-        {titles[props.view] || ""}
+    <div>
+      <button
+        onClick={onBack}
+        style={{
+          background: "none",
+          border: "none",
+          color: COLORS.greyblue,
+          fontSize: 13,
+          cursor: "pointer",
+          fontFamily: FONT,
+          padding: 0,
+          marginBottom: 10,
+        }}
+      >
+        ← クライアント一覧へ戻る
+      </button>
+
+      <h1 style={{ fontSize: 26, fontWeight: 800, margin: "0 0 18px", lineHeight: 1.25 }}>
+        {client.name || "（クライアント）"}
       </h1>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          borderBottom: "1px solid " + COLORS.line,
+          marginBottom: 22,
+        }}
+      >
+        {TABS.map(function (t) {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={function () {
+                onTab(t.key);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                borderBottom: active ? "2px solid " + COLORS.ink : "2px solid transparent",
+                color: active ? COLORS.ink : COLORS.greyblue,
+                fontSize: 14,
+                fontWeight: active ? 800 : 600,
+                cursor: "pointer",
+                fontFamily: FONT,
+                padding: "8px 14px 12px",
+                marginBottom: -1,
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "overview" ? <Overview client={client} /> : null}
+      {tab === "persona" ? <Placeholder label="ペルソナ" /> : null}
+      {tab === "jobad" ? <JobAds /> : null}
+      {tab === "posting" ? <Postings /> : null}
+      {tab === "numbers" ? <Numbers /> : null}
     </div>
   );
 }
 
-function Sidebar(props: any) {
-  const view = props.view;
-  const go = props.onNavigate;
-  return (
-    <aside
-      style={{
-        width: 232,
-        flexShrink: 0,
-        background: COLORS.paper,
-        borderRight: "1px solid " + COLORS.line,
-        minHeight: "100vh",
-        padding: "24px 16px",
-        boxSizing: "border-box" as const,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <div style={{ padding: "0 8px 18px" }}>
-        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 1 }}>ハチプロ RMS</div>
-        <div style={{ fontSize: 11, color: COLORS.greyblue, marginTop: 2 }}>採用管理システム</div>
-      </div>
-
-      <NavGroup label="ホーム" />
-      <NavItem active={view === "home"} onClick={() => go("home")} label="ホーム" />
-
-      <NavGroup label="制作" />
-      <NavItem active={view === "generate"} onClick={() => go("generate")} label="ペルソナ生成" />
-      <NavItem active={view === "list"} onClick={() => go("list")} label="ペルソナ一覧" />
-      <NavItem active={view === "jobad"} onClick={() => go("jobad")} label="求人票" />
-
-      <NavGroup label="管理" />
-      <NavItem disabled label="クライアント一覧（準備中）" />
-      <NavItem active={view === "posting"} onClick={() => go("posting")} label="掲載求人" />
-      <NavItem active={view === "numbers"} onClick={() => go("numbers")} label="数値管理" />
-
-      <div style={{ marginTop: "auto", paddingTop: 18 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px",
-            borderTop: "1px solid " + COLORS.line,
-          }}
-        >
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 999,
-              background: COLORS.ink,
-              color: COLORS.paper,
-              fontSize: 13,
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            寺
-          </div>
-          <div style={{ fontSize: 13, color: COLORS.inkSoft }}>teraki</div>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function NavGroup(props: any) {
+function Overview(props: any) {
+  const client = props.client || {};
   return (
     <div
       style={{
-        fontSize: 10,
-        letterSpacing: 1.5,
-        color: COLORS.greyblue,
-        fontWeight: 700,
-        padding: "16px 8px 6px",
-      }}
-    >
-      {props.label}
-    </div>
-  );
-}
-
-function NavItem(props: any) {
-  const disabled = props.disabled;
-  const active = props.active;
-  return (
-    <button
-      onClick={disabled ? undefined : props.onClick}
-      disabled={disabled}
-      style={{
-        display: "block",
-        width: "100%",
-        textAlign: "left",
-        background: active ? COLORS.ink : "transparent",
-        color: disabled ? COLORS.greyblue : active ? COLORS.paper : COLORS.ink,
-        border: "none",
-        borderRadius: 8,
-        padding: "10px 12px",
-        fontSize: 14,
-        fontWeight: active ? 700 : 500,
-        cursor: disabled ? "default" : "pointer",
-        fontFamily: FONT,
-        marginBottom: 2,
-      }}
-    >
-      {props.label}
-    </button>
-  );
-}
-
-function PersonaBody(props: any) {
-  const persona = props.persona || {};
-  return (
-    <div>
-      <Row label="基本属性" value={persona["基本属性"]} />
-      <Row label="現状" value={persona["現状"]} />
-      <Row label="転職動機（顕在）" value={persona["転職動機_顕在"]} />
-      <Row label="転職動機（潜在）" value={persona["転職動機_潜在"]} accent />
-      <RowList label="重視する条件" items={persona["重視する条件"]} />
-      <RowList label="不安・障壁" items={persona["不安_障壁"]} />
-      <Row label="意思決定の軸" value={persona["意思決定の軸"]} />
-      <Row label="情報接触" value={persona["情報接触"]} />
-      {persona["訴求の方向性"] ? (
-        <div
-          style={{
-            marginTop: 16,
-            paddingTop: 16,
-            borderTop: "1px dashed " + COLORS.line,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              letterSpacing: 1.5,
-              color: COLORS.greyblue,
-              fontWeight: 700,
-              marginBottom: 10,
-            }}
-          >
-            訴求の方向性（求人票生成のインプット）
-          </div>
-          <Chips label="刺さる軸" items={persona["訴求の方向性"]["刺さる軸"]} />
-          <RowList
-            label="キーメッセージ案"
-            items={persona["訴求の方向性"]["キーメッセージ案"]}
-            tight
-          />
-          <Chips label="NG訴求" items={persona["訴求の方向性"]["NG訴求"]} danger />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function Field(props: any) {
-  const grow = props.grow !== false;
-  return (
-    <div style={{ flex: grow ? "1 1 200px" : "0 0 auto", minWidth: grow ? 180 : "auto" }}>
-      <label style={labelStyle}>{props.label}</label>
-      <div style={{ marginTop: 6 }}>{props.children}</div>
-    </div>
-  );
-}
-
-function Row(props: any) {
-  const accent = props.accent;
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ fontSize: 11, letterSpacing: 1, color: COLORS.greyblue, fontWeight: 700 }}>
-        {props.label}
-      </div>
-      <div
-        style={{
-          fontSize: 14,
-          lineHeight: 1.7,
-          marginTop: 4,
-          color: COLORS.ink,
-          background: accent ? "#F4F1EC" : "transparent",
-          borderLeft: accent ? "3px solid " + COLORS.sand : "none",
-          padding: accent ? "8px 12px" : 0,
-          borderRadius: accent ? 6 : 0,
-        }}
-      >
-        {props.value || "—"}
-      </div>
-    </div>
-  );
-}
-
-function RowList(props: any) {
-  const arr = Array.isArray(props.items) ? props.items : [];
-  return (
-    <div style={{ marginTop: props.tight ? 12 : 14 }}>
-      <div style={{ fontSize: 11, letterSpacing: 1, color: COLORS.greyblue, fontWeight: 700 }}>
-        {props.label}
-      </div>
-      <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-        {arr.length === 0 ? (
-          <li style={{ fontSize: 14, color: COLORS.greyblue }}>—</li>
-        ) : (
-          arr.map((x: any, i: number) => (
-            <li key={i} style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 2 }}>
-              {x}
-            </li>
-          ))
-        )}
-      </ul>
-    </div>
-  );
-}
-
-function Chips(props: any) {
-  const arr = Array.isArray(props.items) ? props.items : [];
-  const danger = props.danger;
-  return (
-    <div style={{ marginTop: 10 }}>
-      <div
-        style={{
-          fontSize: 11,
-          letterSpacing: 1,
-          color: COLORS.greyblue,
-          fontWeight: 700,
-          marginBottom: 6,
-        }}
-      >
-        {props.label}
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {arr.length === 0 ? (
-          <span style={{ fontSize: 13, color: COLORS.greyblue }}>—</span>
-        ) : (
-          arr.map((x: any, i: number) => (
-            <span
-              key={i}
-              style={{
-                fontSize: 13,
-                padding: "6px 12px",
-                borderRadius: 999,
-                background: danger ? "#FBEDE9" : "#EFEAE3",
-                color: danger ? "#8A3A22" : COLORS.ink,
-                border: "1px solid " + (danger ? "#E9C9BF" : COLORS.line),
-              }}
-            >
-              {x}
-            </span>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SmallBtn(props: any) {
-  return (
-    <button
-      onClick={props.onClick}
-      style={{
-        background: props.active ? COLORS.sand : COLORS.paper,
+        background: COLORS.paper,
         border: "1px solid " + COLORS.line,
-        borderRadius: 8,
-        padding: "8px 14px",
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: "pointer",
-        fontFamily: FONT,
-        color: COLORS.ink,
+        borderRadius: 14,
+        padding: "22px 24px",
       }}
     >
-      {props.children}
-    </button>
+      <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>{client.name}</div>
+      <div style={{ fontSize: 13, color: COLORS.inkSoft, lineHeight: 1.8 }}>
+        上のタブから、このクライアントのペルソナ・求人票・掲載求人・数値管理にアクセスできます。
+        各機能を「このクライアント専用」に紐付ける調整は次の段階で行います。
+      </div>
+    </div>
+  );
+}
+
+function Placeholder(props: any) {
+  return (
+    <div
+      style={{
+        padding: "48px 20px",
+        textAlign: "center",
+        color: COLORS.greyblue,
+        background: COLORS.paper,
+        border: "1px dashed " + COLORS.line,
+        borderRadius: 14,
+        fontSize: 14,
+      }}
+    >
+      {props.label}機能はこのクライアントページへ移設中です（準備中）。
+    </div>
   );
 }
